@@ -7,6 +7,7 @@ import jwt from 'jsonwebtoken';
 import Database from 'better-sqlite3';
 import crypto from 'node:crypto';
 
+// CryptoPilot AI 2.2 source release. Full release archive is maintained in project Library.
 const app = express();
 const port = Number(process.env.PORT || 3000);
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -20,7 +21,6 @@ CREATE TABLE IF NOT EXISTS alerts(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id I
 CREATE TABLE IF NOT EXISTS payments(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL,event_id TEXT UNIQUE,provider TEXT,status TEXT,amount INTEGER,currency TEXT,authority TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
 CREATE TABLE IF NOT EXISTS audit_log(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER,action TEXT NOT NULL,meta TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
 `);
-
 app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : false);
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json({ limit: '100kb' }));
@@ -29,7 +29,6 @@ const authLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders
 const apiLimit = rateLimit({ windowMs: 60 * 1000, max: 120, standardHeaders: true, legacyHeaders: false });
 const aiLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false });
 app.use('/api/', apiLimit);
-
 function sign(u) { return jwt.sign({ id: u.id, email: u.email }, JWT_SECRET, { expiresIn: '2h' }); }
 function setSession(res, u) { res.cookie('cp_session', sign(u), { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 2 * 60 * 60 * 1000, path: '/' }); }
 function clearSession(res) { res.clearCookie('cp_session', { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/' }); }
@@ -37,61 +36,36 @@ function readCookie(req, name) { const h = req.headers.cookie || ''; const m = h
 function auth(req, res, next) { try { if (!JWT_SECRET) throw new Error(); const bearer = (req.headers.authorization || '').startsWith('Bearer ') ? req.headers.authorization.slice(7) : ''; const raw = bearer || readCookie(req, 'cp_session'); if (!raw) throw new Error(); req.user = jwt.verify(raw, JWT_SECRET); const u = db.prepare('SELECT id,email,plan,role,email_verified FROM users WHERE id=?').get(req.user.id); if (!u) throw new Error(); req.user = u; next(); } catch { res.status(401).json({ error: 'unauthorized' }); } }
 function premium(req,res,next){ if(req.user.plan!=='premium') return res.status(403).json({error:'premium_required'}); next(); }
 function audit(userId, action, meta={}) { db.prepare('INSERT INTO audit_log(user_id,action,meta) VALUES(?,?,?)').run(userId || null, action, JSON.stringify(meta)); }
-
-app.get('/api/health', (req,res)=>res.json({ok:true,service:'CryptoPilot IR',version:'1.0.0-rc2',time:new Date().toISOString()}));
-app.post('/api/auth/register', authLimit, async (req,res)=>{
-  const email=String(req.body?.email||'').trim().toLowerCase(), password=req.body?.password;
-  if(!/^\S+@\S+\.\S+$/.test(email)||typeof password!=='string'||password.length<8)return res.status(400).json({error:'ایمیل یا رمز عبور نامعتبر است'});
-  try { const hash=await bcrypt.hash(password,12); const r=db.prepare('INSERT INTO users(email,password) VALUES(?,?)').run(email,hash); const u=db.prepare('SELECT id,email,plan,role FROM users WHERE id=?').get(r.lastInsertRowid); setSession(res,u); audit(u.id,'register'); res.json({user:u}); } catch { res.status(409).json({error:'این ایمیل قبلاً ثبت شده است'}); }
-});
-app.post('/api/auth/login', authLimit, async (req,res)=>{
-  const email=String(req.body?.email||'').trim().toLowerCase(),password=String(req.body?.password||''); const u=db.prepare('SELECT * FROM users WHERE email=?').get(email);
-  if(!u||!(await bcrypt.compare(password,u.password))) return res.status(401).json({error:'ایمیل یا رمز عبور نادرست است'});
-  setSession(res,u); audit(u.id,'login'); res.json({user:{id:u.id,email:u.email,plan:u.plan,role:u.role}});
-});
+app.get('/api/health', (req,res)=>res.status(200).json({ok:true,service:'CryptoPilot AI',version:'2.2.0',time:new Date().toISOString()}));
+app.get('/api/ready', (req,res)=>res.status(200).json({ok:true,ready:true,version:'2.2.0'}));
+app.post('/api/auth/register', authLimit, async (req,res)=>{ const email=String(req.body?.email||'').trim().toLowerCase(),password=req.body?.password; if(!/^\S+@\S+\.\S+$/.test(email)||typeof password!=='string'||password.length<8)return res.status(400).json({error:'invalid_credentials'}); try{const hash=await bcrypt.hash(password,12);const r=db.prepare('INSERT INTO users(email,password) VALUES(?,?)').run(email,hash);const u=db.prepare('SELECT id,email,plan,role FROM users WHERE id=?').get(r.lastInsertRowid);setSession(res,u);audit(u.id,'register');res.json({user:u});}catch{res.status(409).json({error:'email_exists'});}});
+app.post('/api/auth/login', authLimit, async (req,res)=>{const email=String(req.body?.email||'').trim().toLowerCase(),password=String(req.body?.password||'');const u=db.prepare('SELECT * FROM users WHERE email=?').get(email);if(!u||!(await bcrypt.compare(password,u.password)))return res.status(401).json({error:'invalid_login'});setSession(res,u);audit(u.id,'login');res.json({user:{id:u.id,email:u.email,plan:u.plan,role:u.role}});});
 app.post('/api/auth/logout',(req,res)=>{clearSession(res);res.json({ok:true});});
 app.get('/api/me',auth,(req,res)=>res.json({user:req.user}));
-
 const symbols={BTCUSDT:'BTC',ETHUSDT:'ETH',SOLUSDT:'SOL',BNBUSDT:'BNB',XRPUSDT:'XRP',DOGEUSDT:'DOGE',ADAUSDT:'ADA',AVAXUSDT:'AVAX',LINKUSDT:'LINK',DOTUSDT:'DOT',LTCUSDT:'LTC',TRXUSDT:'TRX'};
-const tfMap={'15m':15,'1h':60,'4h':240}; const cache=new Map();
-async function binanceKlines(symbol,interval,limit=250){ const base=(process.env.MARKET_BASE_URL||'https://api.binance.com').replace(/\/$/,''); const u=`${base}/api/v3/klines?symbol=${encodeURIComponent(symbol)}&interval=${interval}&limit=${limit}`; const r=await fetch(u,{headers:{accept:'application/json'},signal:AbortSignal.timeout(8000)}); if(!r.ok)throw new Error('market'); return r.json(); }
+const tfMap={'15m':15,'1h':60,'4h':240,'1d':1440};
+const cache=new Map();
+async function binanceKlines(symbol,interval,limit=250){const base=(process.env.MARKET_BASE_URL||'https://api.binance.com').replace(/\/$/,'');const u=`${base}/api/v3/klines?symbol=${encodeURIComponent(symbol)}&interval=${interval}&limit=${limit}`;const r=await fetch(u,{headers:{accept:'application/json'},signal:AbortSignal.timeout(8000)});if(!r.ok)throw new Error('market');return r.json();}
 function ema(a,n){if(a.length<n)return null;const k=2/(n+1);let e=a.slice(0,n).reduce((s,v)=>s+v,0)/n;for(let i=n;i<a.length;i++)e=a[i]*k+e*(1-k);return e;}
 function rsi(a,n=14){if(a.length<=n)return null;let g=0,l=0;for(let i=1;i<=n;i++){const d=a[i]-a[i-1];if(d>0)g+=d;else l-=d;}let ag=g/n,al=l/n;for(let i=n+1;i<a.length;i++){const d=a[i]-a[i-1];ag=(ag*(n-1)+(d>0?d:0))/n;al=(al*(n-1)+(d<0?-d:0))/n;}return al===0?100:100-100/(1+ag/al);}
 function atr(rows,n=14){if(rows.length<=n)return null;const trs=[];for(let i=1;i<rows.length;i++){const h=rows[i].h,l=rows[i].l,pc=rows[i-1].c;trs.push(Math.max(h-l,Math.abs(h-pc),Math.abs(l-pc)));}return trs.slice(-n).reduce((s,v)=>s+v,0)/Math.min(n,trs.length);}
-function analyze(rows){
- const closes=rows.map(x=>x.c),vols=rows.map(x=>x.v),cur=closes.at(-1),e20=ema(closes,20),e50=ema(closes,50),e200=ema(closes,200),r=rsi(closes),a=atr(rows);
- const mom=closes.length>28?cur/closes.at(-29)-1:cur/closes[0]-1,avgVol=vols.slice(-20).reduce((s,v)=>s+v,0)/Math.min(20,vols.length),vr=avgVol?vols.at(-1)/avgVol:0;
- const recent=rows.slice(-50),support=Math.min(...recent.map(x=>x.l)),resistance=Math.max(...recent.map(x=>x.h));
- let bull=0;if(e20&&cur>e20)bull+=16;if(e50&&cur>e50)bull+=14;if(e200&&cur>e200)bull+=12;if(r>=50&&r<=68)bull+=16;else if(r>68&&r<75)bull+=8;else if(r<35)bull+=3;if(mom>0)bull+=16;if(vr>=1.2)bull+=10;if(cur>support*1.01)bull+=4;bull=Math.max(0,Math.min(100,Math.round(bull)));let bear=100-bull;
- let risk=30;if(a)risk+=Math.min(32,(a/cur)*100*6);if(r>75||r<25)risk+=12;if(vr>2)risk+=8;risk=Math.max(5,Math.min(95,Math.round(risk)));
- let setup='NEUTRAL';if(bull>=72&&risk<70)setup='BULLISH_SETUP';else if(bear>=72&&risk<70)setup='BEARISH_SETUP';
- const long={entry:cur,stop:a?cur-a*1.5:null,tp1:a?cur+a*1.5:null,tp2:a?cur+a*3:null}; const short={entry:cur,stop:a?cur+a*1.5:null,tp1:a?cur-a*1.5:null,tp2:a?cur-a*3:null};
- return {price:cur,rsi:r,ema20:e20,ema50:e50,ema200:e200,atr:a,momentum:mom,volumeRatio:vr,support,resistance,bullScore:bull,bearScore:bear,riskScore:risk,setup,tradeLevels:{long,short}};
-}
-async function getAnalysis(pair,tf){ const key=pair+tf,now=Date.now(),c=cache.get(key);if(c&&now-c.t<10000)return c.v; const raw=await binanceKlines(pair,tf,250);const rows=raw.map(x=>({t:x[0],o:+x[1],h:+x[2],l:+x[3],c:+x[4],v:+x[5]}));const v={symbol:symbols[pair],pair,tf,updatedAt:new Date().toISOString(),candles:rows.map(x=>[x.t,x.o,x.h,x.l,x.c,x.v]),analysis:analyze(rows)};cache.set(key,{t:now,v});return v; }
+function analyze(rows){const closes=rows.map(x=>x.c),vols=rows.map(x=>x.v),cur=closes.at(-1),e20=ema(closes,20),e50=ema(closes,50),e200=ema(closes,200),r=rsi(closes),a=atr(rows);const mom=closes.length>28?cur/closes.at(-29)-1:cur/closes[0]-1,avgVol=vols.slice(-20).reduce((s,v)=>s+v,0)/Math.min(20,vols.length),vr=avgVol?vols.at(-1)/avgVol:0;const recent=rows.slice(-50),support=Math.min(...recent.map(x=>x.l)),resistance=Math.max(...recent.map(x=>x.h));let bull=0;if(e20&&cur>e20)bull+=16;if(e50&&cur>e50)bull+=14;if(e200&&cur>e200)bull+=12;if(r>=50&&r<=68)bull+=16;else if(r>68&&r<75)bull+=8;else if(r<35)bull+=3;if(mom>0)bull+=16;if(vr>=1.2)bull+=10;if(cur>support*1.01)bull+=4;bull=Math.max(0,Math.min(100,Math.round(bull)));let bear=100-bull;let risk=30;if(a)risk+=Math.min(32,(a/cur)*100*6);if(r>75||r<25)risk+=12;if(vr>2)risk+=8;risk=Math.max(5,Math.min(95,Math.round(risk)));let setup='NEUTRAL';if(bull>=72&&risk<70)setup='BULLISH_SETUP';else if(bear>=72&&risk<70)setup='BEARISH_SETUP';const long={entry:cur,stop:a?cur-a*1.5:null,tp1:a?cur+a*1.5:null,tp2:a?cur+a*3:null};const short={entry:cur,stop:a?cur+a*1.5:null,tp1:a?cur-a*1.5:null,tp2:a?cur-a*3:null};return{price:cur,rsi:r,ema20:e20,ema50:e50,ema200:e200,atr:a,momentum:mom,volumeRatio:vr,support,resistance,bullScore:bull,bearScore:bear,riskScore:risk,setup,tradeLevels:{long,short}};}
+async function geckoSnapshot(symbol){const ids={BTC:'bitcoin',ETH:'ethereum',SOL:'solana',BNB:'binancecoin',XRP:'ripple',DOGE:'dogecoin',ADA:'cardano',AVAX:'avalanche-2',LINK:'chainlink',DOT:'polkadot',LTC:'litecoin',TRX:'tron'};const id=ids[symbol];if(!id)throw new Error('gecko');const u=`https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true`;const r=await fetch(u,{headers:{accept:'application/json'},signal:AbortSignal.timeout(8000)});if(!r.ok)throw new Error('gecko');const d=(await r.json())[id];if(!d?.usd)throw new Error('gecko');return{price:d.usd,change24h:d.usd_24h_change??null,volume24h:d.usd_24h_vol??null};}
+async function getAnalysis(pair,tf){const key=pair+tf,now=Date.now(),c=cache.get(key);if(c&&now-c.t<1000)return c.v;try{const raw=await binanceKlines(pair,tf,250);const rows=raw.map(x=>({t:x[0],o:+x[1],h:+x[2],l:+x[3],c:+x[4],v:+x[5]}));const v={symbol:symbols[pair],pair,tf,provider:'binance',updatedAt:new Date().toISOString(),candles:rows.map(x=>[x.t,x.o,x.h,x.l,x.c,x.v]),analysis:analyze(rows)};cache.set(key,{t:now,v});return v;}catch{const s=await geckoSnapshot(symbols[pair]);const v={symbol:symbols[pair],pair,tf,provider:'coingecko_snapshot',updatedAt:new Date().toISOString(),candles:[],analysis:{price:s.price,rsi:null,ema20:null,ema50:null,ema200:null,atr:null,momentum:(s.change24h??0)/100,volumeRatio:null,support:null,resistance:null,bullScore:s.change24h>0?60:40,bearScore:s.change24h<0?60:40,riskScore:50,setup:'SNAPSHOT_ONLY',tradeLevels:{long:null,short:null}}};cache.set(key,{t:now,v});return v;}}
+app.get('/api/market-status',async(req,res)=>{const checks=await Promise.all(['BTCUSDT','ETHUSDT'].map(async p=>{try{const j=await getAnalysis(p,'15m');return{pair:p,provider:j.provider,updatedAt:j.updatedAt,online:true};}catch{return{pair:p,online:false};}}));res.json({ok:checks.some(x=>x.online),checkedAt:new Date().toISOString(),markets:checks});});
+app.get('/api/coins',async(req,res)=>{const q=String(req.query.q||'').toLowerCase().trim();const list=Object.entries(symbols).map(([pair,symbol])=>({pair,symbol,name:symbol})).filter(x=>!q||x.symbol.toLowerCase().includes(q)||x.name.toLowerCase().includes(q));res.json({updatedAt:new Date().toISOString(),coins:list});});
 app.get('/api/market/:symbol',async(req,res)=>{const symbol=String(req.params.symbol||'').toUpperCase(),tf=String(req.query.tf||'15m');if(!symbols[symbol]||!tfMap[tf])return res.status(400).json({error:'unsupported_market'});try{res.json(await getAnalysis(symbol,tf));}catch{res.status(503).json({error:'market_unavailable'});}});
-app.get('/api/scanner',async(req,res)=>{const tf=String(req.query.tf||'15m');if(!tfMap[tf])return res.status(400).json({error:'unsupported_tf'});const results=[];await Promise.all(Object.keys(symbols).map(async pair=>{try{const j=await getAnalysis(pair,tf),a=j.analysis;results.push({symbol:j.symbol,pair,price:a.price,bullScore:a.bullScore,bearScore:a.bearScore,riskScore:a.riskScore,setup:a.setup,rsi:a.rsi,momentum:a.momentum,volumeRatio:a.volumeRatio});}catch{}}));results.sort((a,b)=>Math.max(b.bullScore,b.bearScore)-Math.max(a.bullScore,a.bearScore));res.json({tf,updatedAt:new Date().toISOString(),results});});
-
+app.get('/api/scanner',async(req,res)=>{const tf=String(req.query.tf||'15m');if(!tfMap[tf])return res.status(400).json({error:'unsupported_tf'});const results=[];await Promise.all(Object.keys(symbols).map(async pair=>{try{const j=await getAnalysis(pair,tf),a=j.analysis;results.push({symbol:j.symbol,pair,price:a.price,bullScore:a.bullScore,bearScore:a.bearScore,riskScore:a.riskScore,setup:a.setup,rsi:a.rsi,momentum:a.momentum,volumeRatio:a.volumeRatio,provider:j.provider});}catch{}}));results.sort((a,b)=>Math.max(b.bullScore,b.bearScore)-Math.max(a.bullScore,a.bearScore));res.json({tf,updatedAt:new Date().toISOString(),results});});
+app.get('/robots.txt',(req,res)=>{const base=process.env.PUBLIC_BASE_URL||`${req.protocol}://${req.get('host')}`;res.type('text/plain').send(`User-agent: *\nAllow: /\nSitemap: ${base}/sitemap.xml\n`);});
+app.get('/sitemap.xml',(req,res)=>{const base=(process.env.PUBLIC_BASE_URL||`${req.protocol}://${req.get('host')}`).replace(/\/$/,'');const slugs=['bitcoin','ethereum','solana','binance-coin','xrp','dogecoin','cardano','avalanche','chainlink','polkadot','litecoin','tron'];const urls=['/','/market-analysis','/ai-crypto-chart-analysis',...slugs.map(s=>`/crypto/${s}`)];res.type('application/xml').send(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls.map(u=>`<url><loc>${base}${u}</loc><changefreq>${u==='/'?'daily':'hourly'}</changefreq><priority>${u==='/'?'1.0':'0.8'}</priority></url>`).join('')}</urlset>`);});
+app.get(['/market-analysis','/ai-crypto-chart-analysis'],(req,res)=>res.sendFile('index.html',{root:'public'}));
+app.get('/crypto/:slug',(req,res)=>res.sendFile('index.html',{root:'public'}));
 app.post('/api/alerts',auth,(req,res)=>{const symbol=String(req.body?.symbol||'').toUpperCase(),target=Number(req.body?.target),direction=req.body?.direction==='below'?'below':'above';if(!Object.values(symbols).includes(symbol)||!Number.isFinite(target)||target<=0)return res.status(400).json({error:'invalid_alert'});const r=db.prepare('INSERT INTO alerts(user_id,symbol,target,direction) VALUES(?,?,?,?)').run(req.user.id,symbol,target,direction);audit(req.user.id,'alert_create',{symbol,target,direction});res.json({id:r.lastInsertRowid});});
 app.get('/api/alerts',auth,(req,res)=>res.json(db.prepare('SELECT id,symbol,target,direction,active,triggered_at,created_at FROM alerts WHERE user_id=? ORDER BY id DESC').all(req.user.id)));
 app.delete('/api/alerts/:id',auth,(req,res)=>{db.prepare('DELETE FROM alerts WHERE id=? AND user_id=?').run(Number(req.params.id),req.user.id);audit(req.user.id,'alert_delete',{id:req.params.id});res.json({ok:true});});
-
-// Alert worker: evaluates active alerts every 30s. Delivery is logged and can be connected to Telegram/email/SMS.
-async function checkAlerts(){ const alerts=db.prepare('SELECT * FROM alerts WHERE active=1').all(); for(const al of alerts){try{const pair=Object.entries(symbols).find(([,v])=>v===al.symbol)?.[0];if(!pair)continue;const j=await getAnalysis(pair,'15m');const price=j.analysis.price;const hit=al.direction==='above'?price>=al.target:price<=al.target;if(hit){db.prepare('UPDATE alerts SET active=0,triggered_at=CURRENT_TIMESTAMP WHERE id=?').run(al.id);audit(al.user_id,'alert_triggered',{symbol:al.symbol,target:al.target,price});}}catch{}} }
+async function checkAlerts(){const alerts=db.prepare('SELECT * FROM alerts WHERE active=1').all();for(const al of alerts){try{const pair=Object.entries(symbols).find(([,v])=>v===al.symbol)?.[0];if(!pair)continue;const j=await getAnalysis(pair,'15m');const price=j.analysis.price;const hit=al.direction==='above'?price>=al.target:price<=al.target;if(hit){db.prepare('UPDATE alerts SET active=0,triggered_at=CURRENT_TIMESTAMP WHERE id=?').run(al.id);audit(al.user_id,'alert_triggered',{symbol:al.symbol,target:al.target,price});}}catch{}}}
 setInterval(()=>checkAlerts().catch(()=>{}),30000);
-
-app.post('/api/ai/analyze',auth,aiLimit,premium,async(req,res)=>{if(!process.env.OPENAI_API_KEY)return res.status(503).json({error:'ai_not_configured'});const symbol=String(req.body?.symbol||''),context=String(req.body?.context||'').slice(0,12000);try{const r=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.OPENAI_API_KEY}`},body:JSON.stringify({model:process.env.OPENAI_MODEL||'gpt-5-mini',input:`You are CryptoPilot IR's educational crypto market analyst. Analyze only the supplied market data. Explain trend, momentum, volatility, volume, support/resistance and risks. Never guarantee returns. Do not present certainty or personalized financial advice. Symbol: ${symbol}. Data: ${context}`}),signal:AbortSignal.timeout(20000)});if(!r.ok)throw new Error('ai');const j=await r.json();res.json({answer:j.output_text||'No analysis returned.'});}catch{res.status(503).json({error:'ai_unavailable'});}});
-
-// Payment adapter boundary. No fake success is returned. Configure a real provider adapter before accepting money.
-app.post('/api/payment/create',auth,async(req,res)=>{
-  if(process.env.PAYMENT_PROVIDER!=='configured') return res.status(503).json({error:'payment_provider_not_configured'});
-  res.status(501).json({error:'provider_adapter_required'});
-});
-app.post('/api/payment/webhook',express.raw({type:'application/json'}),(req,res)=>{if(process.env.PAYMENT_PROVIDER!=='configured')return res.status(503).json({error:'payment_not_configured'});res.status(501).json({error:'provider_adapter_required'});});
-
-// Admin: never exposed without an authenticated admin account.
+app.post('/api/ai/analyze',auth,aiLimit,premium,async(req,res)=>{if(!process.env.OPENAI_API_KEY)return res.status(503).json({error:'ai_not_configured'});const symbol=String(req.body?.symbol||''),context=String(req.body?.context||'').slice(0,12000);try{const r=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.OPENAI_API_KEY}`},body:JSON.stringify({model:process.env.OPENAI_MODEL||'gpt-5.6-luna',input:`You are CryptoPilot AI's educational crypto market analyst. Analyze only the supplied market data. Explain trend, momentum, volatility, volume, support/resistance and risks. Never guarantee returns. Do not present certainty or personalized financial advice. Symbol: ${symbol}. Data: ${context}`}),signal:AbortSignal.timeout(20000)});if(!r.ok)throw new Error('ai');const j=await r.json();res.json({answer:j.output_text||'No analysis returned.'});}catch{res.status(503).json({error:'ai_unavailable'});}});
 app.get('/api/admin/overview',auth,(req,res)=>{if(req.user.role!=='admin')return res.status(403).json({error:'forbidden'});res.json({users:db.prepare('SELECT COUNT(*) c FROM users').get().c,premium:db.prepare("SELECT COUNT(*) c FROM users WHERE plan='premium'").get().c,alerts:db.prepare('SELECT COUNT(*) c FROM alerts WHERE active=1').get().c,payments:db.prepare('SELECT COUNT(*) c FROM payments').get().c});});
-app.get('/api/admin/audit',auth,(req,res)=>{if(req.user.role!=='admin')return res.status(403).json({error:'forbidden'});res.json(db.prepare('SELECT * FROM audit_log ORDER BY id DESC LIMIT 100').all());});
-
-app.get('*',(req,res)=>res.sendFile(process.cwd()+'/public/index.html'));
-app.listen(port,()=>console.log(`CryptoPilot IR RC2 listening on ${port}`));
+app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:'internal_error'});});
+app.listen(port,'0.0.0.0',()=>console.log(`CryptoPilot AI 2.2 listening on ${port}`));
