@@ -1,7 +1,6 @@
 import express from 'express';
 import crypto from 'node:crypto';
 
-// Multi-provider market-data routing. Some hosts can block individual market APIs.
 const nativeFetch = globalThis.fetch;
 const binanceHosts = ['api.binance.com','api1.binance.com','api2.binance.com','api3.binance.com','api4.binance.com'];
 const krakenPairs = {BTC:'XBTUSD',ETH:'ETHUSD',SOL:'SOLUSD',BNB:'BNBUSD',XRP:'XRPUSD',DOGE:'DOGEUSD',ADA:'ADAUSD',AVAX:'AVAXUSD',LINK:'LINKUSD',DOT:'DOTUSD',LTC:'LTCUSD',TRX:'TRXUSD'};
@@ -29,8 +28,8 @@ globalThis.fetch = async (input, init = {}) => {
     for (const host of binanceHosts) {
       try {
         u.host = host;
-        const r = await nativeFetch(u, { ...init, signal: init.signal || AbortSignal.timeout(9000) });
-        if (r.ok || r.status < 400) return r;
+        const r = await nativeFetch(u, {...init, signal:AbortSignal.timeout(2500)});
+        if (r.ok) return r;
         last = new Error(`Binance HTTP ${r.status}`);
       } catch (e) { last = e; }
     }
@@ -38,7 +37,9 @@ globalThis.fetch = async (input, init = {}) => {
   }
   if (raw.includes('api.coingecko.com/api/v3/simple/price')) {
     try {
-      return await nativeFetch(input, { ...init, signal: init.signal || AbortSignal.timeout(9000) });
+      const r = await nativeFetch(input, {...init, signal:AbortSignal.timeout(5000)});
+      if (r.ok) return r;
+      throw new Error(`CoinGecko HTTP ${r.status}`);
     } catch {
       const u = new URL(raw);
       const id = u.searchParams.get('ids');
@@ -57,7 +58,7 @@ function getPaymentConfig() {
   const wallet = String(process.env.USDT_TRC20_WALLET || process.env.TRON_RECEIVE_ADDRESS || '').trim();
   const amount = Number(process.env.PREMIUM_USDT_AMOUNT || 3);
   const tronApiKey = String(process.env.TRONGRID_API_KEY || '').trim();
-  return { enabled:Boolean(wallet), network:'TRC20', asset:'USDT', wallet, amount:Number.isFinite(amount)&&amount>0?amount:3, verification:tronApiKey?'automatic_ready':'manual_pending_trongrid_key' };
+  return {enabled:Boolean(wallet),network:'TRC20',asset:'USDT',wallet,amount:Number.isFinite(amount)&&amount>0?amount:3,verification:tronApiKey?'automatic_ready':'manual_pending_trongrid_key'};
 }
 express.application.listen = function patchedListen(...args) {
   const app = this;
