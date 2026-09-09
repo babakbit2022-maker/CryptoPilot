@@ -1,5 +1,7 @@
 import express from 'express';
 import crypto from 'node:crypto';
+import jwt from 'jsonwebtoken';
+import Database from 'better-sqlite3';
 
 const nativeFetch = globalThis.fetch;
 const binanceHosts = ['api.binance.com','api1.binance.com','api2.binance.com','api3.binance.com','api4.binance.com'];
@@ -53,6 +55,8 @@ globalThis.fetch = async (input, init = {}) => {
 };
 
 const originalListen = express.application.listen;
+const db = new Database(process.env.DB_PATH || 'cryptopilot.db');
+db.exec(`CREATE TABLE IF NOT EXISTS page_views(id INTEGER PRIMARY KEY AUTOINCREMENT,visitor_id TEXT NOT NULL,path TEXT NOT NULL,referrer TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP);CREATE TABLE IF NOT EXISTS payment_orders(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER,txid TEXT UNIQUE NOT NULL,event_id TEXT UNIQUE NOT NULL,status TEXT NOT NULL DEFAULT 'pending',created_at TEXT DEFAULT CURRENT_TIMESTAMP);`);
 function validTxid(txid) { return /^[a-fA-F0-9]{64}$/.test(txid); }
 function getPaymentConfig() {
   const wallet = String(process.env.USDT_TRC20_WALLET || process.env.TRON_RECEIVE_ADDRESS || '').trim();
@@ -60,11 +64,62 @@ function getPaymentConfig() {
   const tronApiKey = String(process.env.TRONGRID_API_KEY || '').trim();
   return {enabled:Boolean(wallet),network:'TRC20',asset:'USDT',wallet,amount:Number.isFinite(amount)&&amount>0?amount:3,verification:tronApiKey?'automatic_ready':'manual_pending_trongrid_key'};
 }
+function cookieValue(req,name){const h=String(req.headers.cookie||'');const m=h.match(new RegExp('(?:^|;\\s*)'+name.replace(/[.*+?^${}()|[\\]\\\\]/g,'\\$&')+'=([^;]*)'));return m?decodeURIComponent(m[1]):'';}
+function authUser(req){
+  try{
+    const secret=process.env.JWT_SECRET;
+    if(!secret||secret.length<32)return null;
+    const bearer=String(req.headers.authorization||'');
+    const raw=bearer.startsWith('Bearer ')?bearer.slice(7):cookieValue(req,'cp_session');
+    if(!raw)return null;
+    const p=jwt.verify(raw,secret);
+    return db.prepare('SELECT id,email,plan,role FROM users WHERE id=?').get(p.id)||null;
+  }catch{return null;}
+}
+function adminUser(req){const u=authUser(req);return u&&u.role==='admin'?u:null;}
+function daysAgo(n){return new Date(Date.now()-n*86400000).toISOString().slice(0,10);}
+function analytics(req,res){
+  const d=Number(req.query.days||7);const days=Math.max(1,Math.min(30,Number.isFinite(d)?d:7));
+  const from=daysAgo(days-1);
+  const views=Number(db.prepare("SELECT COUNT(*) n FROM page_views WHERE created_at>=datetime(?,'start of day')").get(from)?.n||0);
+  const unique=Number(db.prepare("SELECT COUNT(DISTINCT visitor_id) n FROM page_views WHERE created_at>=datetime(?,'start of day')").get(from)?.n||0);
+  const signups=Number(db.prepare("SELECT COUNT(*) n FROM users WHERE created_at>=datetime(?,'start of day')").get(from)?.n||0);
+  const orders=Number(db.prepare("SELECT COUNT(*) n FROM payment_orders WHERE created_at>=datetime(?,'start of day')").get(from)?.n||0);
+  const confirmed=Number(db.prepare("SELECT COUNT(*) n FROM payment_orders WHERE status='confirmed' AND created_at>=datetime(?,'start of day')").get(from)?.n||0);
+  const premium=Number(db.prepare("SELECT COUNT(*) n FROM users WHERE plan='premium'").get()?.n||0);
+  const daily=db.prepare("SELECT substr(created_at,1,10) day,COUNT(*) views,COUNT(DISTINCT visitor_id) unique_visitors FROM page_views WHERE created_at>=datetime(?,'start of day') GROUP BY day ORDER BY day").all(from);
+  const recentOrders=db.prepare("SELECT txid,status,created_at FROM payment_orders ORDER BY id DESC LIMIT 20").all().map(x=>({txid:x.txid.slice(0,10)+'…'+x.txid.slice(-6),status:x.status,createdAt:x.created_at}));
+  res.json({ok:true,rangeDays:days,totals:{views,uniqueVisitors:unique,signups,paymentSubmissions:orders,confirmedPurchases:confirmed,premiumUsers:premium},daily,recentOrders});
+}
 express.application.listen = function patchedListen(...args) {
   const app = this;
   app.use((req,res,next)=>{res.set('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate');res.set('Pragma','no-cache');next();});
+  app.use((req,res,next)=>{
+    if(req.method==='GET'&&!req.path.startsWith('/api/')&&!req.path.startsWith('/admin')&&!req.path.includes('.')&&req.path!=='/favicon.ico'){
+      let vid=cookieValue(req,'cp_vid');
+      if(!vid){vid=crypto.randomBytes(12).toString('hex');res.cookie?.('cp_vid',vid,{httpOnly:true,sameSite:'lax',secure:process.env.NODE_ENV==='production',maxAge:31536000000,path:'/'});}
+      const ip=String(req.headers['x-forwarded-for']||req.socket.remoteAddress||'').split(',')[0].trim();
+      const stable=crypto.createHash('sha256').update(vid+'|'+ip).digest('hex').slice(0,32);
+      db.prepare('INSERT INTO page_views(visitor_id,path,referrer) VALUES(?,?,?)').run(stable,req.path,String(req.headers.referer||'').slice(0,500));
+    }
+    next();
+  });
+  app.get('/api/admin/stats',(req,res)=>{if(!adminUser(req))return res.status(403).json({error:'admin_required'});analytics(req,res);});
+  app.post('/api/admin/bootstrap',(req,res)=>{
+    const u=authUser(req);if(!u)return res.status(401).json({error:'unauthorized'});
+    const admins=Number(db.prepare("SELECT COUNT(*) n FROM users WHERE role='admin'").get()?.n||0);
+    if(admins>0)return res.status(409).json({error:'admin_already_configured'});
+    db.prepare("UPDATE users SET role='admin' WHERE id=?").run(u.id);
+    res.json({ok:true,role:'admin'});
+  });
   app.get('/api/payment/config',(req,res)=>{const cfg=getPaymentConfig();if(!cfg.enabled)return res.status(503).json({enabled:false,network:'TRC20',asset:'USDT',error:'payment_not_configured'});res.json({ok:true,...cfg});});
-  app.post('/api/payment/submit',(req,res,next)=>{try{const ah=String(req.headers.authorization||''),ch=String(req.headers.cookie||'');if(!ah.startsWith('Bearer ')&&!ch.includes('cp_session='))return res.status(401).json({error:'unauthorized'});const txid=String(req.body?.txid||'').trim();if(!validTxid(txid))return res.status(400).json({error:'invalid_txid'});const eventId=crypto.createHash('sha256').update(`tron:${txid}`).digest('hex');res.status(202).json({ok:true,status:'pending',eventId,txid,network:'TRC20',asset:'USDT',message:'Transaction received for verification.'});}catch(e){next(e);}});
+  app.post('/api/payment/submit',(req,res,next)=>{try{
+    const u=authUser(req);if(!u)return res.status(401).json({error:'unauthorized'});
+    const txid=String(req.body?.txid||'').trim();if(!validTxid(txid))return res.status(400).json({error:'invalid_txid'});
+    const eventId=crypto.createHash('sha256').update(`tron:${txid}`).digest('hex');
+    db.prepare('INSERT OR IGNORE INTO payment_orders(user_id,txid,event_id,status) VALUES(?,?,?,?)').run(u.id,txid,eventId,'pending');
+    res.status(202).json({ok:true,status:'pending',eventId,txid,network:'TRC20',asset:'USDT',message:'Transaction received for verification.'});
+  }catch(e){next(e);}});
   app.get('/api/payment/status',(req,res)=>{const cfg=getPaymentConfig();res.json({ok:true,configured:cfg.enabled,network:cfg.network,asset:cfg.asset,amount:cfg.amount,verification:cfg.verification});});
   return originalListen.apply(app,args);
 };
