@@ -1,0 +1,7 @@
+{
+  "nodeModulesDir": "auto",
+  "tasks": {
+    "start": "node server.js",
+    "check": "node --check server.js"
+  }
+}
