@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 const nativeFetch = globalThis.fetch;
 const binanceHosts = ['api.binance.com','api1.binance.com','api2.binance.com','api3.binance.com','api4.binance.com'];
 const krakenPairs = {BTC:'XBTUSD',ETH:'ETHUSD',SOL:'SOLUSD',BNB:'BNBUSD',XRP:'XRPUSD',DOGE:'DOGEUSD',ADA:'ADAUSD',AVAX:'AVAXUSD',LINK:'LINKUSD',DOT:'DOTUSD',LTC:'LTCUSD',TRX:'TRXUSD'};
-const coingeckoIds = {bitcoin:'BTC',ethereum:'ETH',solana:'SOL',binancecoin:'BNB',ripple:'XRP',dogecoin:'DOGE',cardano:'ADA',avalanche-2:'AVAX',chainlink:'LINK',polkadot:'DOT',litecoin:'LTC',tron:'TRX'};
+const coingeckoIds = {bitcoin:'BTC',ethereum:'ETH',solana:'SOL',binancecoin:'BNB',ripple:'XRP',dogecoin:'DOGE',cardano:'ADA','avalanche-2':'AVAX',chainlink:'LINK',polkadot:'DOT',litecoin:'LTC',tron:'TRX'};
 
 async function krakenSnapshot(symbol) {
   const pair = krakenPairs[symbol];
@@ -36,8 +36,6 @@ globalThis.fetch = async (input, init = {}) => {
     }
     throw last || new Error('Binance unavailable');
   }
-  // Make the existing CoinGecko snapshot path resilient by returning a compatible
-  // response from Kraken when CoinGecko is unreachable from the hosting network.
   if (raw.includes('api.coingecko.com/api/v3/simple/price')) {
     try {
       return await nativeFetch(input, { ...init, signal: init.signal || AbortSignal.timeout(9000) });
