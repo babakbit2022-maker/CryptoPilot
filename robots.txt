@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://babakbit2022-maker.github.io/CryptoPilot/sitemap.xml
