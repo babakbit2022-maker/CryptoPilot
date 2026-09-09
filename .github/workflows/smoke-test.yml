@@ -1,0 +1,45 @@
+name: Live Smoke Test
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for deployment
+        run: sleep 20
+
+      - name: Check health and readiness
+        shell: bash
+        run: |
+          set -e
+          BASE='https://waterspout-pretty-rhinoceros.abasthan.app'
+          for path in /api/health /api/ready /api/market-status; do
+            echo "Checking $BASE$path"
+            ok=0
+            for i in {1..6}; do
+              code=$(curl -L -sS -o /tmp/response.json -w '%{http_code}' --max-time 20 "$BASE$path" || true)
+              cat /tmp/response.json || true
+              echo
+              if [ "$code" = "200" ]; then ok=1; break; fi
+              sleep 10
+            done
+            if [ "$ok" != "1" ]; then
+              echo "Smoke test failed for $path"
+              exit 1
+            fi
+          done
+
+      - name: Check BTC market endpoint
+        shell: bash
+        run: |
+          set -e
+          URL='https://waterspout-pretty-rhinoceros.abasthan.app/api/market/BTCUSDT?tf=15m'
+          code=$(curl -L -sS -o /tmp/btc.json -w '%{http_code}' --max-time 30 "$URL")
+          cat /tmp/btc.json
+          echo
+          test "$code" = "200"
+          grep -Eq 'BTC|BTCUSDT|price|provider' /tmp/btc.json
