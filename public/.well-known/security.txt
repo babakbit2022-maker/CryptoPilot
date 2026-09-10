@@ -1,0 +1,4 @@
+Contact: mailto:security@cryptopilot.ai
+Expires: 2027-09-10T00:00:00Z
+Preferred-Languages: en
+Canonical: https://waterspout-pretty-rhinoceros.abasthan.app/.well-known/security.txt
