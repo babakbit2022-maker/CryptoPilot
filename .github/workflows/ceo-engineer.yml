@@ -1,0 +1,82 @@
+name: CryptoPilot CEO Engineer
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 */6 * * *'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  engineer:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Static smoke checks
+        id: smoke
+        continue-on-error: true
+        run: node scripts/ceo-smoke.mjs | tee ceo-smoke.json
+
+      - name: JavaScript syntax checks
+        id: syntax
+        continue-on-error: true
+        run: npm run check
+
+      - name: Production monitor
+        id: monitor
+        continue-on-error: true
+        env:
+          CRYPTOPILOT_URL: ${{ vars.CRYPTOPILOT_URL || 'https://waterspout-pretty-rhinoceros.abasthan.app' }}
+        run: node scripts/ceo-monitor.mjs | tee ceo-production.json
+
+      - name: Create engineering incident
+        if: steps.smoke.outcome == 'failure' || steps.syntax.outcome == 'failure' || steps.monitor.outcome == 'failure'
+        uses: actions/github-script@v7
+        env:
+          SMOKE: ${{ steps.smoke.outcome }}
+          SYNTAX: ${{ steps.syntax.outcome }}
+          MONITOR: ${{ steps.monitor.outcome }}
+        with:
+          script: |
+            const fs = require('fs');
+            const read = (f) => fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '(no report)';
+            const title = 'CEO Agent: Engineering action required';
+            const body = [
+              '# CryptoPilot CEO Agent', '',
+              `Static smoke checks: ${process.env.SMOKE}`,
+              `Syntax checks: ${process.env.SYNTAX}`,
+              `Production monitor: ${process.env.MONITOR}`, '',
+              '## Smoke report', '```json', read('ceo-smoke.json'), '```',
+              '## Production report', '```json', read('ceo-production.json'), '```', '',
+              '### Safe remediation policy',
+              '- Do not modify secrets or payment configuration automatically.',
+              '- Do not deploy an untested change.',
+              '- Fix source code, run the smoke/syntax checks, then verify production health.',
+              '- This issue is the CEO Agent handoff for the next repair cycle.'
+            ].join('\n');
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo, state: 'open', labels: 'ceo-agent', per_page: 50
+            });
+            const existing = issues.find(i => i.title === title);
+            if (existing) {
+              await github.rest.issues.update({ owner: context.repo.owner, repo: context.repo.repo, issue_number: existing.number, body });
+            } else {
+              await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title, body, labels: ['ceo-agent'] });
+            }
+
+      - name: Stop on detected problem
+        if: steps.smoke.outcome == 'failure' || steps.syntax.outcome == 'failure' || steps.monitor.outcome == 'failure'
+        run: exit 1
