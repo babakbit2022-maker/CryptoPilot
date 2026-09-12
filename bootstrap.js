@@ -1,6 +1,8 @@
 import express from 'express';
 
 const originalStatic = express.static;
+const GA_ID = process.env.GA_MEASUREMENT_ID || '';
+const analyticsScript = GA_ID ? `<script async src="https://www.googletagmanager.com/gtag/js?id=${GA_ID}"></script><script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','${GA_ID}',{send_page_view:true});</script>` : '';
 const statusScript = `<script>
 (()=>{
   const box=()=>document.getElementById('statusGrid');
@@ -41,7 +43,7 @@ express.static = function(...args){
         const type=String(res.getHeader('content-type')||'');
         if(chunk && type.includes('text/html')){
           const body=Buffer.isBuffer(chunk)?chunk.toString('utf8'):String(chunk);
-          const injected=body.includes('</body>')?body.replace('</body>',statusScript+'</body>'):body+statusScript;
+          const injected=body.includes('</body>')?body.replace('</body>',analyticsScript+statusScript+'</body>'):body+analyticsScript+statusScript;
           res.removeHeader('content-length');
           res.removeHeader('etag');
           return originalEnd.call(res,Buffer.from(injected,'utf8'),undefined,cb);
