@@ -68,13 +68,13 @@ jobs:
               '- This issue is the CEO Agent handoff for the next repair cycle.'
             ].join('\n');
             const { data: issues } = await github.rest.issues.listForRepo({
-              owner: context.repo.owner, repo: context.repo.repo, state: 'open', labels: 'ceo-agent', per_page: 50
+              owner: context.repo.owner, repo: context.repo.repo, state: 'open', per_page: 50
             });
             const existing = issues.find(i => i.title === title);
             if (existing) {
               await github.rest.issues.update({ owner: context.repo.owner, repo: context.repo.repo, issue_number: existing.number, body });
             } else {
-              await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title, body, labels: ['ceo-agent'] });
+              await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title, body });
             }
 
       - name: Stop on detected problem
