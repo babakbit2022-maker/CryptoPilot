@@ -1,0 +1,54 @@
+name: CryptoPilot CEO Safe Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  release-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Static smoke checks
+        run: node scripts/ceo-smoke.mjs
+
+      - name: JavaScript syntax checks
+        run: npm run check
+
+      - name: Local production release gate
+        run: node scripts/ceo-release.mjs
+
+      - name: Upload release report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cryptopilot-ceo-release-report
+          path: ceo-release.json
+          if-no-files-found: ignore
+
+      - name: Optional deployment hook
+        if: success() && secrets.DEPLOY_HOOK_URL != ''
+        env:
+          DEPLOY_HOOK_URL: ${{ secrets.DEPLOY_HOOK_URL }}
+        run: |
+          curl --fail --silent --show-error --max-time 30 -X POST "$DEPLOY_HOOK_URL"
+          echo "Deployment hook accepted. Production verification remains the CEO monitor's responsibility."
+
+      - name: No deployment target configured
+        if: success() && secrets.DEPLOY_HOOK_URL == ''
+        run: echo "Release gate passed. No deployment hook is configured, so no production deployment was attempted."
