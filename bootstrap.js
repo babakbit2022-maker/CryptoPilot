@@ -7,7 +7,7 @@ if (!process.env.USDT_TRC20_WALLET && !process.env.TRON_RECEIVE_ADDRESS) {
 
 const originalStatic = express.static;
 const GA_ID = process.env.GA_MEASUREMENT_ID || '';
-const analyticsScript = GA_ID ? `<script async src="https://www.googletagmanager.com/gtag/js?id=${GA_ID}"></script><script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','${GA_ID}',{send_page_view:true});</script>` : '';
+const analyticsScript = GA_ID ? `<script async src="https://www.googletagmanager.com/gtag/js?id=${GA_ID}"></script><script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(dataLayer);}</script>` : '';
 const statusScript = `<script>
 (()=>{
   const box=()=>document.getElementById('statusGrid');
@@ -59,6 +59,9 @@ express.static = function(...args){
     return middleware(req,res,(err)=>{res.end=originalEnd;next(err)});
   };
 };
+
+// Install the verifier before payment-wrapper. payment-wrapper will call this patched listener as its final listen layer.
+await import('./payment-verifier.js');
 
 // Express 5 exposes the response prototype as express.response. The payment wrapper expects the legacy nested reference.
 express.application.response = express.response;
