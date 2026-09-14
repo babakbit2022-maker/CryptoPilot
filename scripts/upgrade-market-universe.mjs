@@ -3,13 +3,20 @@ import fs from 'node:fs';
 const serverPath = 'server.js';
 let s = fs.readFileSync(serverPath, 'utf8');
 
+// Idempotent guard: current dynamic market-universe implementations need no rewrite.
+if (s.includes('async function refreshMarketUniverse()') && s.includes("const all=await refreshMarketUniverse()")) {
+  console.log('Market universe already upgraded; nothing to do.');
+  process.exit(0);
+}
+
 if (!s.includes("const symbols={BTCUSDT:'BTC'")) {
-  console.log('Market universe already upgraded or source differs; nothing to do.');
+  console.log('Market universe source differs; refusing an unsafe automatic rewrite.');
   process.exit(0);
 }
 
 const oldSymbol = /const symbols=\{[^;]+\};\nconst tfMap=/;
 const replacement = `const symbols={BTCUSDT:'BTC',ETHUSDT:'ETH',SOLUSDT:'SOL',BNBUSDT:'BNB',XRPUSDT:'XRP',DOGEUSDT:'DOGE',ADAUSDT:'ADA',AVAXUSDT:'AVAX',LINKUSDT:'LINK',DOTUSDT:'DOT',LTCUSDT:'LTC',TRXUSDT:'TRX'};\nconst symbolMeta=new Map(Object.entries(symbols).map(([pair,symbol])=>[pair,{symbol,coingeckoId:null}]));\nconst tfMap=`;
+if (!oldSymbol.test(s)) throw new Error('symbol map shape not recognized');
 s = s.replace(oldSymbol, replacement);
 
 const marker = `async function binanceKlines(symbol,interval,limit=250){`;
@@ -19,17 +26,17 @@ s = s.replace(marker, add + marker);
 
 const oldCoins = `app.get('/api/coins',async(req,res)=>{const q=String(req.query.q||'').toLowerCase().trim();const list=Object.entries(symbols).map(([pair,symbol])=>({pair,symbol,name:symbol})).filter(x=>!q||x.symbol.toLowerCase().includes(q)||x.name.toLowerCase().includes(q));res.json({updatedAt:new Date().toISOString(),coins:list});});`;
 const newCoins = `app.get('/api/coins',async(req,res)=>{const q=String(req.query.q||'').toLowerCase().trim();const all=await refreshMarketUniverse();const list=all.filter(x=>!q||x.symbol.toLowerCase().includes(q)||x.name.toLowerCase().includes(q));res.json({updatedAt:new Date().toISOString(),coins:list,count:list.length});});`;
-if (!s.includes(oldCoins)) throw new Error('coins route not found');
+if (!s.includes(oldCoins)) throw new Error('coins route shape not recognized');
 s = s.replace(oldCoins, newCoins);
 
 const oldMarket = `app.get('/api/market/:symbol',async(req,res)=>{const symbol=String(req.params.symbol||'').toUpperCase(),tf=String(req.query.tf||'15m');if(!symbols[symbol]||!tfMap[tf])return res.status(400).json({error:'unsupported_market'});try{res.json(await getAnalysis(symbol,tf));}catch{res.status(503).json({error:'market_unavailable'});}});`;
 const newMarket = `app.get('/api/market/:symbol',async(req,res)=>{const symbol=String(req.params.symbol||'').toUpperCase(),tf=String(req.query.tf||'15m');if(!tfMap[tf])return res.status(400).json({error:'unsupported_tf'});await refreshMarketUniverse();if(!symbols[symbol])return res.status(400).json({error:'unsupported_market'});try{res.json(await getAnalysis(symbol,tf));}catch{res.status(503).json({error:'market_unavailable'});}});`;
-if (!s.includes(oldMarket)) throw new Error('market route not found');
+if (!s.includes(oldMarket)) throw new Error('market route shape not recognized');
 s = s.replace(oldMarket, newMarket);
 
 const oldScanner = `app.get('/api/scanner',async(req,res)=>{const tf=String(req.query.tf||'15m');if(!tfMap[tf])return res.status(400).json({error:'unsupported_tf'});const results=[];await Promise.all(Object.keys(symbols).map(async pair=>{try{const j=await getAnalysis(pair,tf),a=j.analysis;results.push({symbol:j.symbol,pair,price:a.price,bullScore:a.bullScore,bearScore:a.bearScore,riskScore:a.riskScore,setup:a.setup,rsi:a.rsi,momentum:a.momentum,volumeRatio:a.volumeRatio,provider:j.provider});}catch{}}));results.sort((a,b)=>Math.max(b.bullScore,b.bearScore)-Math.max(a.bullScore,a.bearScore));res.json({tf,updatedAt:new Date().toISOString(),results});});`;
-const newScanner = `app.get('/api/scanner',async(req,res)=>{const tf=String(req.query.tf||'15m');if(!tfMap[tf])return res.status(400).json({error:'unsupported_tf'});await refreshMarketUniverse();const results=[];await Promise.all(Object.keys(symbols).slice(0,100).map(async pair=>{try{const j=await getAnalysis(pair,tf),a=j.analysis;results.push({symbol:j.symbol,pair,price:a.price,bullScore:a.bullScore,bearScore:a.bearScore,riskScore:a.riskScore,setup:a.setup,rsi:a.rsi,momentum:a.momentum,volumeRatio:a.volumeRatio,provider:j.provider});}catch{}}));results.sort((a,b)=>Math.max(b.bullScore,b.bearScore)-Math.max(a.bullScore,a.bearScore));res.json({tf,updatedAt:new Date().toISOString(),results,count:results.length});});`;
-if (!s.includes(oldScanner)) throw new Error('scanner route not found');
+const newScanner = `app.get('/api/scanner',async(req,res)=>{const tf=String(req.query.tf||'15m');if(!tfMap[tf])return res.status(400).json({error:'unsupported_tf'});await refreshMarketUniverse();const results=[];await Promise.all(Object.keys(symbols).slice(0,100).map(async pair=>{try{const j=await getAnalysis(pair,tf),a=j.analysis;results.push({symbol:j.symbol,pair,price:a.price,bullScore:a.bullScore,bearScore:a.bearScore,riskScore:a.riskScore,setup:a.setup,rsi:a.rsi,momentum:a.momentum,volumeRatio:a.volumeRatio,provider:j.provider});}catch{}}));results.sort((a,b)=>Math.max(b.bullScore,b.bearScore)-Math.max(b.bearScore,a.bearScore));res.json({tf,updatedAt:new Date().toISOString(),results,count:results.length});});`;
+if (!s.includes(oldScanner)) throw new Error('scanner route shape not recognized');
 s = s.replace(oldScanner, newScanner);
 
 s = s.replace("version:'2.2.0'", "version:'2.3.1'");
@@ -40,12 +47,5 @@ const pkgPath = 'package.json';
 const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
 pkg.version = '2.3.1';
 fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
-
-const indexPath = 'public/index.html';
-if (fs.existsSync(indexPath)) {
-  let html = fs.readFileSync(indexPath, 'utf8');
-  html = html.replace('12 tracked assets', '100+ tracked assets');
-  fs.writeFileSync(indexPath, html);
-}
 
 console.log('Upgraded CryptoPilot market universe to dynamic top-USDT coverage (up to 120; scanner top 100).');
