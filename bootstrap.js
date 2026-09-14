@@ -55,4 +55,7 @@ express.static = function(...args){
   };
 };
 
+// Express 5 exposes the response prototype as express.response. The payment wrapper expects the legacy nested reference.
+express.application.response = express.response;
+
 await import('./payment-wrapper.js');
