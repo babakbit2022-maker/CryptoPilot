@@ -1,0 +1,51 @@
+name: CryptoPilot Disaster Recovery Backup
+
+on:
+  schedule:
+    - cron: '30 3 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cryptopilot-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create source backup archive
+        run: |
+          mkdir -p backup
+          git archive --format=tar.gz --output="backup/CryptoPilot-${GITHUB_SHA}.tar.gz" HEAD
+          sha256sum "backup/CryptoPilot-${GITHUB_SHA}.tar.gz" > backup/SHA256SUMS.txt
+
+      - name: Upload backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CryptoPilot-source-${{ github.sha }}
+          path: backup/
+          retention-days: 90
+
+      - name: Create immutable-style dated recovery release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="backup-$(date -u +%Y%m%d)"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Backup release $TAG already exists; nothing to replace."
+            exit 0
+          fi
+          gh release create "$TAG" \
+            "backup/CryptoPilot-${GITHUB_SHA}.tar.gz" \
+            "backup/SHA256SUMS.txt" \
+            --target "$GITHUB_SHA" \
+            --title "CryptoPilot backup $TAG" \
+            --notes "Automated disaster-recovery snapshot of the tested main branch. Restore this source snapshot first, then restore deployment secrets/environment variables separately. Payment/wallet configuration is intentionally not rewritten by this backup workflow."
