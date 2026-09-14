@@ -7,7 +7,7 @@ if (!process.env.USDT_TRC20_WALLET && !process.env.TRON_RECEIVE_ADDRESS) {
 
 const originalStatic = express.static;
 const GA_ID = process.env.GA_MEASUREMENT_ID || '';
-const analyticsScript = GA_ID ? `<script async src="https://www.googletagmanager.com/gtag/js?id=${GA_ID}"></script><script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(dataLayer);}</script>` : '';
+const analyticsScript = GA_ID ? `<script async src="https://www.googletagmanager.com/gtag/js?id=${GA_ID}"></script><script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${GA_ID}',{send_page_view:true});</script>` : '';
 const statusScript = `<script>
 (()=>{
   const box=()=>document.getElementById('statusGrid');
