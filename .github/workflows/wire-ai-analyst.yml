@@ -1,0 +1,38 @@
+name: Wire AI Analyst
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'public/ai-analyst.js'
+      - '.github/workflows/wire-ai-analyst.yml'
+permissions:
+  contents: write
+jobs:
+  wire:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Wire AI analyst into coin page
+        run: |
+          node <<'NODE'
+          const fs=require('fs');
+          const p='public/crypto-chart.html';
+          let s=fs.readFileSync(p,'utf8');
+          const tag='<script src="/ai-analyst.js" defer></script>';
+          if(!s.includes(tag)){
+            const i=s.toLowerCase().lastIndexOf('</body>');
+            if(i<0) throw new Error('missing body');
+            s=s.slice(0,i)+tag+s.slice(i);
+            fs.writeFileSync(p,s);
+          }
+          NODE
+      - name: Syntax check
+        run: node --check public/ai-analyst.js
+      - name: Commit
+        run: |
+          git config user.name 'CryptoPilot CEO Engineer'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add public/crypto-chart.html public/ai-analyst.js
+          git diff --cached --quiet || git commit -m 'feat: wire live AI analyst into coin page'
+          git push
