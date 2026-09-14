@@ -24,14 +24,19 @@ child.stderr.on('data', b => { output += b.toString(); });
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 let lastError = null;
+let ready = false;
 
 try {
-  for (let attempt = 0; attempt < 20; attempt++) {
+  for (let attempt = 0; attempt < 40; attempt++) {
     try {
       const res = await fetch(`${base}/api/health`);
-      if (res.ok) break;
+      if (res.ok) { ready = true; break; }
     } catch (e) { lastError = e; }
     await sleep(500);
+  }
+  if (!ready) {
+    const diagnostic = output.slice(-6000) || 'bootstrap produced no output';
+    throw new Error(`Local server did not become ready on ${base}. Last connection error: ${lastError?.message || 'unknown'}\nBootstrap output:\n${diagnostic}`);
   }
 
   const paths = ['/api/health', '/api/ready', '/api/market-status', '/api/coins?q=BTC', '/robots.txt', '/sitemap.xml'];
@@ -62,5 +67,5 @@ try {
   await sleep(250);
   if (!child.killed) child.kill('SIGKILL');
   if (lastError) console.error(`CEO release gate error: ${lastError.message || lastError}`);
-  if (output && process.env.CEO_DEBUG) console.error(output.slice(-6000));
+  if (output && (process.env.CEO_DEBUG || !ready)) console.error(output.slice(-6000));
 }
