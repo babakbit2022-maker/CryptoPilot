@@ -19,7 +19,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
       - name: Install dependencies
         run: npm install --no-audit --no-fund
@@ -42,13 +41,13 @@ jobs:
           if-no-files-found: ignore
 
       - name: Optional deployment hook
-        if: success() && secrets.DEPLOY_HOOK_URL != ''
+        if: success()
         env:
           DEPLOY_HOOK_URL: ${{ secrets.DEPLOY_HOOK_URL }}
         run: |
+          if [ -z "$DEPLOY_HOOK_URL" ]; then
+            echo "Release gate passed. No deployment hook is configured, so no production deployment was attempted."
+            exit 0
+          fi
           curl --fail --silent --show-error --max-time 30 -X POST "$DEPLOY_HOOK_URL"
           echo "Deployment hook accepted. Production verification remains the CEO monitor's responsibility."
-
-      - name: No deployment target configured
-        if: success() && secrets.DEPLOY_HOOK_URL == ''
-        run: echo "Release gate passed. No deployment hook is configured, so no production deployment was attempted."
