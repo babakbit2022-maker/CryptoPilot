@@ -41,15 +41,44 @@ jobs:
           CRYPTOPILOT_URL: ${{ vars.CRYPTOPILOT_URL || 'https://waterspout-pretty-rhinoceros.abasthan.app' }}
         run: node scripts/ceo-monitor.mjs | tee ceo-production.json
 
-      - name: Safe auto-repair guard
+      - name: Safe auto-repair
+        id: repair
         if: steps.smoke.outcome == 'failure' || steps.syntax.outcome == 'failure' || steps.monitor.outcome == 'failure'
-        env:
-          GH_TOKEN: ${{ github.token }}
+        continue-on-error: true
+        run: node scripts/ceo-auto-repair.mjs
+
+      - name: Validate repaired source
+        id: repair_check
+        if: steps.repair.outcome == 'success'
+        continue-on-error: true
         run: |
-          echo 'CEO Engineer detected a problem.'
-          echo 'Automatic repair is intentionally limited: payment configuration, wallet addresses, secrets, UI/public assets, and deployment settings are protected.'
-          echo 'A repair agent may only operate through an explicitly reviewed repair script; none is enabled by this workflow yet.'
-          exit 0
+          npm run check
+          node scripts/ceo-smoke.mjs
+
+      - name: Re-check production after repair
+        id: repair_monitor
+        if: steps.repair_check.outcome == 'success'
+        continue-on-error: true
+        env:
+          CRYPTOPILOT_URL: ${{ vars.CRYPTOPILOT_URL || 'https://waterspout-pretty-rhinoceros.abasthan.app' }}
+        run: node scripts/ceo-monitor.mjs | tee ceo-production-after-repair.json
+
+      - name: Commit safe repair
+        if: steps.repair_check.outcome == 'success' && steps.repair_monitor.outcome == 'success'
+        run: |
+          if git diff --quiet; then
+            echo 'No source changes were required.'
+            exit 0
+          fi
+          git config user.name 'CryptoPilot CEO Agent'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add server.js scripts/
+          if git diff --cached --quiet; then
+            echo 'No allowlisted repair changes to commit.'
+            exit 0
+          fi
+          git commit -m 'fix: CEO Engineer safe auto-repair [skip ci]'
+          git push
 
       - name: Create engineering incident
         if: steps.smoke.outcome == 'failure' || steps.syntax.outcome == 'failure' || steps.monitor.outcome == 'failure'
@@ -58,6 +87,9 @@ jobs:
           SMOKE: ${{ steps.smoke.outcome }}
           SYNTAX: ${{ steps.syntax.outcome }}
           MONITOR: ${{ steps.monitor.outcome }}
+          REPAIR: ${{ steps.repair.outcome }}
+          REPAIR_CHECK: ${{ steps.repair_check.outcome }}
+          REPAIR_MONITOR: ${{ steps.repair_monitor.outcome }}
         with:
           script: |
             const fs = require('fs');
@@ -67,15 +99,20 @@ jobs:
               '# CryptoPilot CEO Agent', '',
               `Static smoke checks: ${process.env.SMOKE}`,
               `Syntax checks: ${process.env.SYNTAX}`,
-              `Production monitor: ${process.env.MONITOR}`, '',
+              `Production monitor: ${process.env.MONITOR}`,
+              `Safe repair: ${process.env.REPAIR}`,
+              `Repair validation: ${process.env.REPAIR_CHECK}`,
+              `Post-repair production monitor: ${process.env.REPAIR_MONITOR}`, '',
               '## Smoke report', '```json', read('ceo-smoke.json'), '```',
-              '## Production report', '```json', read('ceo-production.json'), '```', '',
+              '## Production report', '```json', read('ceo-production.json'), '```',
+              '## Post-repair production report', '```json', read('ceo-production-after-repair.json'), '```', '',
               '### Safe remediation policy',
               '- Never modify wallet addresses or payment configuration automatically.',
               '- Never modify secrets or deployment configuration automatically.',
               '- Never modify UI/public assets, styles, branding, or visual layout automatically.',
-              '- Source/infrastructure repairs must pass syntax, smoke, and production checks before release.',
-              '- This issue is the CEO Agent handoff for the next repair cycle.'
+              '- Only explicitly allowlisted deterministic repair scripts may change source/infrastructure code.',
+              '- A repair is committed only after syntax, smoke, and production checks pass.',
+              '- This issue is the CEO Agent handoff when a problem remains unresolved.'
             ].join('\n');
             const { data: issues } = await github.rest.issues.listForRepo({
               owner: context.repo.owner, repo: context.repo.repo, state: 'open', per_page: 50
@@ -87,6 +124,6 @@ jobs:
               await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title, body });
             }
 
-      - name: Stop on detected problem
-        if: steps.smoke.outcome == 'failure' || steps.syntax.outcome == 'failure' || steps.monitor.outcome == 'failure'
+      - name: Stop if unresolved
+        if: (steps.smoke.outcome == 'failure' || steps.syntax.outcome == 'failure' || steps.monitor.outcome == 'failure') && (steps.repair_check.outcome != 'success' || steps.repair_monitor.outcome != 'success')
         run: exit 1
