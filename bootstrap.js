@@ -1,5 +1,10 @@
 import express from 'express';
 
+// Public receive address used by the CryptoPilot payment flow. Environment configuration still wins.
+if (!process.env.USDT_TRC20_WALLET && !process.env.TRON_RECEIVE_ADDRESS) {
+  process.env.USDT_TRC20_WALLET = 'TLSqNCn8Jdsh6eV4kty3sdeWhcpJFPeVS5';
+}
+
 const originalStatic = express.static;
 const GA_ID = process.env.GA_MEASUREMENT_ID || '';
 const analyticsScript = GA_ID ? `<script async src="https://www.googletagmanager.com/gtag/js?id=${GA_ID}"></script><script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','${GA_ID}',{send_page_view:true});</script>` : '';
