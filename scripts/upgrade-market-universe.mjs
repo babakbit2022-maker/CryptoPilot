@@ -3,7 +3,6 @@ import fs from 'node:fs';
 const serverPath = 'server.js';
 let s = fs.readFileSync(serverPath, 'utf8');
 
-// Idempotent guard: current dynamic market-universe implementations need no rewrite.
 if (s.includes('async function refreshMarketUniverse()') && s.includes("const all=await refreshMarketUniverse()")) {
   console.log('Market universe already upgraded; nothing to do.');
   process.exit(0);
@@ -35,7 +34,7 @@ if (!s.includes(oldMarket)) throw new Error('market route shape not recognized')
 s = s.replace(oldMarket, newMarket);
 
 const oldScanner = `app.get('/api/scanner',async(req,res)=>{const tf=String(req.query.tf||'15m');if(!tfMap[tf])return res.status(400).json({error:'unsupported_tf'});const results=[];await Promise.all(Object.keys(symbols).map(async pair=>{try{const j=await getAnalysis(pair,tf),a=j.analysis;results.push({symbol:j.symbol,pair,price:a.price,bullScore:a.bullScore,bearScore:a.bearScore,riskScore:a.riskScore,setup:a.setup,rsi:a.rsi,momentum:a.momentum,volumeRatio:a.volumeRatio,provider:j.provider});}catch{}}));results.sort((a,b)=>Math.max(b.bullScore,b.bearScore)-Math.max(a.bullScore,a.bearScore));res.json({tf,updatedAt:new Date().toISOString(),results});});`;
-const newScanner = `app.get('/api/scanner',async(req,res)=>{const tf=String(req.query.tf||'15m');if(!tfMap[tf])return res.status(400).json({error:'unsupported_tf'});await refreshMarketUniverse();const results=[];await Promise.all(Object.keys(symbols).slice(0,100).map(async pair=>{try{const j=await getAnalysis(pair,tf),a=j.analysis;results.push({symbol:j.symbol,pair,price:a.price,bullScore:a.bullScore,bearScore:a.bearScore,riskScore:a.riskScore,setup:a.setup,rsi:a.rsi,momentum:a.momentum,volumeRatio:a.volumeRatio,provider:j.provider});}catch{}}));results.sort((a,b)=>Math.max(b.bullScore,b.bearScore)-Math.max(b.bearScore,a.bearScore));res.json({tf,updatedAt:new Date().toISOString(),results,count:results.length});});`;
+const newScanner = `app.get('/api/scanner',async(req,res)=>{const tf=String(req.query.tf||'15m');if(!tfMap[tf])return res.status(400).json({error:'unsupported_tf'});await refreshMarketUniverse();const results=[];await Promise.all(Object.keys(symbols).slice(0,100).map(async pair=>{try{const j=await getAnalysis(pair,tf),a=j.analysis;results.push({symbol:j.symbol,pair,price:a.price,bullScore:a.bullScore,bearScore:a.bearScore,riskScore:a.riskScore,setup:a.setup,rsi:a.rsi,momentum:a.momentum,volumeRatio:a.volumeRatio,provider:j.provider});}catch{}}));results.sort((a,b)=>Math.max(b.bullScore,b.bearScore)-Math.max(a.bullScore,a.bearScore));res.json({tf,updatedAt:new Date().toISOString(),results,count:results.length});});`;
 if (!s.includes(oldScanner)) throw new Error('scanner route shape not recognized');
 s = s.replace(oldScanner, newScanner);
 
