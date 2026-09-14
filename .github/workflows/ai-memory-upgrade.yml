@@ -1,0 +1,32 @@
+name: CryptoPilot AI Market Memory
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/upgrade-ai-memory.mjs'
+      - 'public/ai-memory.js'
+      - 'server.js'
+      - 'public/crypto-chart.html'
+      - '.github/workflows/ai-memory-upgrade.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Apply safe AI memory upgrade
+        run: node scripts/upgrade-ai-memory.mjs
+      - name: Syntax check
+        run: node --check server.js && node --check public/ai-memory.js && node --check scripts/upgrade-ai-memory.mjs
+      - name: Verify protected wallet remains unchanged
+        run: grep -R "TLSqNCn8Jdsh6eV4kty3sdeWhcpJFPeVS5" server.js payment-wrapper.js payment-verifier.js bootstrap.js >/dev/null
+      - name: Commit upgrade if needed
+        run: |
+          git config user.name "CryptoPilot CEO Engineer"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet; then echo "No changes needed"; else git add server.js public/crypto-chart.html && git commit -m "feat: enable AI Market Memory track record" && git push; fi
