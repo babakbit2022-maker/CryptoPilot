@@ -37,7 +37,8 @@ jobs:
           set -euo pipefail
           test -n "$AGNES_API_KEY" || { echo 'Missing AGNES_API_KEY secret.'; exit 1; }
           mkdir -p "$RUNNER_TEMP/agnes/working" "$RUNNER_TEMP/agnes/config"
-          docker run -d --name agnes-video -p 8765:8765 -e AGNES_API_KEY="$AGNES_API_KEY" -v "$RUNNER_TEMP/agnes/working:/app/.working_dir" -v "$RUNNER_TEMP/agnes/config:/app/.agnes_config" ghcr.io/lcy362/agnes-video-generator/free-short-video:latest
+          docker pull lcy362/free-short-video:latest
+          docker run -d --name agnes-video -p 8765:8765 -e AGNES_API_KEY="$AGNES_API_KEY" -v "$RUNNER_TEMP/agnes/working:/app/.working_dir" -v "$RUNNER_TEMP/agnes/config:/app/.agnes_config" lcy362/free-short-video:latest
           for i in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:8765/api/health >/dev/null; then exit 0; fi
             sleep 5
