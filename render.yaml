@@ -3,7 +3,9 @@ services:
     name: cryptopilot-ai
     runtime: node
     plan: free
-    buildCommand: npm ci
+    # Use npm install because this repository intentionally does not commit a lockfile yet.
+    # npm ci requires package-lock.json/npm-shrinkwrap/yarn.lock and would fail otherwise.
+    buildCommand: npm install --no-audit --no-fund
     startCommand: npm start
     envVars:
       - key: NODE_ENV
