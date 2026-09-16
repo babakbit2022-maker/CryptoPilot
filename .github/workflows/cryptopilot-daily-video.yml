@@ -1,6 +1,6 @@
 name: CryptoPilot Daily Video
 
-on:
+'on':
   push:
     paths:
       - .github/workflows/cryptopilot-daily-video.yml
@@ -22,22 +22,13 @@ jobs:
     steps:
       - name: Get current market snapshot
         id: market
-        shell: bash
         run: |
           set -euo pipefail
-          curl -fsSL --retry 3 \
-            'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd&include_24hr_change=true' \
-            -o market.json
-          BTC=$(jq -r '.bitcoin.usd' market.json)
-          BTC24=$(jq -r '.bitcoin.usd_24h_change' market.json)
-          ETH=$(jq -r '.ethereum.usd' market.json)
-          ETH24=$(jq -r '.ethereum.usd_24h_change' market.json)
-          {
-            echo "BTC=$BTC"
-            echo "BTC24=$BTC24"
-            echo "ETH=$ETH"
-            echo "ETH24=$ETH24"
-          } >> "$GITHUB_OUTPUT"
+          curl -fsSL --retry 3 'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd&include_24hr_change=true' -o market.json
+          echo "BTC=$(jq -r '.bitcoin.usd' market.json)" >> "$GITHUB_OUTPUT"
+          echo "BTC24=$(jq -r '.bitcoin.usd_24h_change' market.json)" >> "$GITHUB_OUTPUT"
+          echo "ETH=$(jq -r '.ethereum.usd' market.json)" >> "$GITHUB_OUTPUT"
+          echo "ETH24=$(jq -r '.ethereum.usd_24h_change' market.json)" >> "$GITHUB_OUTPUT"
 
       - name: Start free Agnes video generator
         env:
@@ -46,12 +37,7 @@ jobs:
           set -euo pipefail
           test -n "$AGNES_API_KEY" || { echo 'Missing AGNES_API_KEY secret.'; exit 1; }
           mkdir -p "$RUNNER_TEMP/agnes/working" "$RUNNER_TEMP/agnes/config"
-          docker run -d --name agnes-video \
-            -p 8765:8765 \
-            -e AGNES_API_KEY="$AGNES_API_KEY" \
-            -v "$RUNNER_TEMP/agnes/working:/app/.working_dir" \
-            -v "$RUNNER_TEMP/agnes/config:/app/.agnes_config" \
-            ghcr.io/lcy362/agnes-video-generator/free-short-video:latest
+          docker run -d --name agnes-video -p 8765:8765 -e AGNES_API_KEY="$AGNES_API_KEY" -v "$RUNNER_TEMP/agnes/working:/app/.working_dir" -v "$RUNNER_TEMP/agnes/config:/app/.agnes_config" ghcr.io/lcy362/agnes-video-generator/free-short-video:latest
           for i in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:8765/api/health >/dev/null; then exit 0; fi
             sleep 5
@@ -60,17 +46,14 @@ jobs:
           exit 1
 
       - name: Generate CryptoPilot Short
-        id: generate
         env:
           BTC: ${{ steps.market.outputs.BTC }}
           BTC24: ${{ steps.market.outputs.BTC24 }}
           ETH: ${{ steps.market.outputs.ETH }}
           ETH24: ${{ steps.market.outputs.ETH24 }}
-        shell: bash
         run: |
           set -euo pipefail
-          IDEA="Create a professional CryptoPilot AI daily crypto-market Short for a global English-speaking audience. Current snapshot: Bitcoin is $${BTC}, 24h change ${BTC24}%; Ethereum is $${ETH}, 24h change ${ETH24}%. Use these values as the factual market snapshot. Make 4 connected vertical scenes totaling about 32 seconds. Scene 1: strong 0-3 second hook. Scene 2: BTC/ETH market snapshot. Scene 3: explain one notable market movement or volatility observation without inventing news. Scene 4: concise informational AI-style analysis, CTA to CryptoPilot AI, and a small disclaimer that this is market information, not financial advice. Do not promise profits, returns, or guaranteed outcomes. Modern clean fintech aesthetic, mobile-first, English narration and English subtitles, portrait 9:16. Use current values exactly where shown and clearly frame other observations as general market context."
-
+          IDEA="Create a professional CryptoPilot AI daily crypto-market Short for a global English-speaking audience. Bitcoin is $${BTC}, 24h change ${BTC24}%. Ethereum is $${ETH}, 24h change ${ETH24}%. Make 4 connected vertical scenes totaling about 32 seconds: a strong 0-3 second hook; BTC and ETH snapshot; one factual volatility or market-movement observation without inventing news; concise informational AI-style analysis, CTA to CryptoPilot AI, and a small market-information-not-financial-advice disclaimer. Do not promise profits, returns, or guaranteed outcomes. Modern clean fintech aesthetic, English narration, English subtitles, portrait 9:16."
           curl -fsS -X POST http://127.0.0.1:8765/api/tasks/creative \
             -F "idea=$IDEA" \
             -F 'creative_name=CryptoPilot Daily Video' \
@@ -93,13 +76,11 @@ jobs:
             -F 'subtitle_stroke_width=2' \
             -F 'execution_mode=auto' \
             > task.json
-
           TASK_ID=$(jq -r '.task_id' task.json)
           test -n "$TASK_ID" && test "$TASK_ID" != null
           echo "TASK_ID=$TASK_ID" >> "$GITHUB_ENV"
 
       - name: Wait for completed video
-        shell: bash
         run: |
           set -euo pipefail
           for i in $(seq 1 180); do
@@ -107,11 +88,7 @@ jobs:
             STATUS=$(jq -r '.status' state.json)
             echo "[$i] status=$STATUS"
             if [ "$STATUS" = "COMPLETED" ]; then exit 0; fi
-            if [ "$STATUS" = "FAILED" ]; then
-              cat state.json
-              docker logs agnes-video || true
-              exit 1
-            fi
+            if [ "$STATUS" = "FAILED" ]; then cat state.json; docker logs agnes-video || true; exit 1; fi
             sleep 10
           done
           cat state.json
@@ -119,7 +96,6 @@ jobs:
           exit 1
 
       - name: Collect generated video
-        shell: bash
         run: |
           set -euo pipefail
           VIDEO_PATH=$(jq -r '.final_video_file' state.json)
@@ -127,11 +103,6 @@ jobs:
           test -f "$VIDEO_PATH"
           mkdir -p dist
           cp "$VIDEO_PATH" dist/CryptoPilot-Daily-Short.mp4
-          cat > dist/README.txt <<EOF
-CryptoPilot Daily Video
-Generated automatically by Agnes AI.
-This video is informational market content and is not financial advice.
-EOF
           ls -lh dist/CryptoPilot-Daily-Short.mp4
 
       - name: Publish stable public video asset
@@ -139,7 +110,7 @@ EOF
         with:
           tag_name: daily-video
           name: CryptoPilot Daily Video
-          body: 'Latest automatically generated CryptoPilot Daily Short. The asset is replaced by the daily workflow.'
+          body: Latest automatically generated CryptoPilot Daily Short.
           prerelease: true
           make_latest: false
           files: dist/CryptoPilot-Daily-Short.mp4
@@ -148,6 +119,4 @@ EOF
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Print stable media URL
-        run: |
-          echo 'Stable media URL:'
-          echo 'https://github.com/babakbit2022-maker/CryptoPilot/releases/download/daily-video/CryptoPilot-Daily-Short.mp4'
+        run: echo 'https://github.com/babakbit2022-maker/CryptoPilot/releases/download/daily-video/CryptoPilot-Daily-Short.mp4'
