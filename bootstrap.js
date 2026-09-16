@@ -8,7 +8,7 @@ if (!process.env.USDT_TRC20_WALLET && !process.env.TRON_RECEIVE_ADDRESS) {
 const originalStatic = express.static;
 const GA_ID = process.env.GA_MEASUREMENT_ID || '';
 const analyticsScript = GA_ID ? `<script async src="https://www.googletagmanager.com/gtag/js?id=${GA_ID}"></script><script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${GA_ID}',{send_page_view:true});</script>` : '';
-const performanceScript = `<script src="/performance.js" defer></script>`;
+const performanceScript = `<script src="/performance.js" defer></script><script src="/seo.js" defer></script>`;
 const statusScript = `<script>
 (()=>{
   const box=()=>document.getElementById('statusGrid');
@@ -52,7 +52,6 @@ express.static = function(...args){
           const injected=body.includes('</body>')?body.replace('</body>',analyticsScript+performanceScript+statusScript+'</body>'):body+analyticsScript+performanceScript+statusScript;
           res.removeHeader('content-length');
           res.removeHeader('etag');
-          // HTML is short-lived; static JS/CSS/images remain cacheable by the browser/CDN.
           res.setHeader('Cache-Control','public, max-age=60, stale-while-revalidate=300');
           return originalEnd.call(res,Buffer.from(injected,'utf8'),undefined,cb);
         }
