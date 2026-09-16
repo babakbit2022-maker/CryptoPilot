@@ -7,7 +7,7 @@ import jwt from 'jsonwebtoken';
 import Database from 'better-sqlite3';
 import crypto from 'node:crypto';
 
-// CryptoPilot AI 2.2 source release. Full release archive is maintained in project Library.
+// CryptoPilot AI 2.3.1 source release. Full release archive is maintained in project Library.
 const app = express();
 const port = Number(process.env.PORT || 3000);
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -42,7 +42,7 @@ function aiMemoryBias(a){if(!a)return 'NEUTRAL';if(a.setup==='BULLISH_SETUP')ret
 function aiMemoryEvaluate(rows,currentPrice){for(const p of rows){if(p.status!=='pending')continue;const px=Number(currentPrice);const entry=Number(p.entry),stop=Number(p.stop),tp1=Number(p.tp1);if(!Number.isFinite(px)||!Number.isFinite(entry)||!Number.isFinite(stop)||!Number.isFinite(tp1))continue;let outcome=null;if(p.bias==='LONG'){if(px>=tp1)outcome='TP1_HIT';else if(px<=stop)outcome='STOP_HIT';}else if(p.bias==='SHORT'){if(px<=tp1)outcome='TP1_HIT';else if(px>=stop)outcome='STOP_HIT';}if(outcome){db.prepare("UPDATE ai_predictions SET status='resolved',outcome=?,resolved_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'").run(outcome,p.id);}}}
 function aiMemorySummary(symbol,tf){const rows=db.prepare("SELECT * FROM ai_predictions WHERE symbol=? AND tf=? ORDER BY created_at DESC LIMIT 30").all(symbol,tf);const resolved=rows.filter(x=>x.status==='resolved');const wins=resolved.filter(x=>x.outcome==='TP1_HIT').length;return {total:rows.length,resolved:resolved.length,wins,accuracy:resolved.length?Math.round(wins/resolved.length*100):null,pending:rows.length-resolved.length,last:rows[0]||null};}
 app.get('/api/health', (req,res)=>res.status(200).json({ok:true,service:'CryptoPilot AI',version:'2.3.1',time:new Date().toISOString()}));
-app.get('/api/ready', (req,res)=>res.status(200).json({ok:true,ready:true,version:'2.2.0'}));
+app.get('/api/ready', (req,res)=>res.status(200).json({ok:true,ready:true,version:'2.3.1'}));
 app.post('/api/auth/register', authLimit, async (req,res)=>{ const email=String(req.body?.email||'').trim().toLowerCase(),password=req.body?.password; if(!/^\S+@\S+\.\S+$/.test(email)||typeof password!=='string'||password.length<8)return res.status(400).json({error:'invalid_credentials'}); try{const hash=await bcrypt.hash(password,12);const r=db.prepare('INSERT INTO users(email,password) VALUES(?,?)').run(email,hash);const u=db.prepare('SELECT id,email,plan,role FROM users WHERE id=?').get(r.lastInsertRowid);setSession(res,u);audit(u.id,'register');res.json({user:u});}catch{res.status(409).json({error:'email_exists'});}});
 app.post('/api/auth/login', authLimit, async (req,res)=>{const email=String(req.body?.email||'').trim().toLowerCase(),password=String(req.body?.password||'');const u=db.prepare('SELECT * FROM users WHERE email=?').get(email);if(!u||!(await bcrypt.compare(password,u.password)))return res.status(401).json({error:'invalid_login'});setSession(res,u);audit(u.id,'login');res.json({user:{id:u.id,email:u.email,plan:u.plan,role:u.role}});});
 app.post('/api/auth/logout',(req,res)=>{clearSession(res);res.json({ok:true});});
