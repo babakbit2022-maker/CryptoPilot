@@ -1,9 +1,6 @@
 name: CryptoPilot Daily Video
 
 'on':
-  push:
-    paths:
-      - .github/workflows/cryptopilot-daily-video.yml
   schedule:
     - cron: '0 1 * * *'
   workflow_dispatch:
@@ -13,7 +10,7 @@ permissions:
 
 concurrency:
   group: cryptopilot-daily-video
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   generate:
