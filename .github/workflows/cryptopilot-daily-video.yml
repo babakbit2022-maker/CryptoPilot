@@ -51,31 +51,33 @@ jobs:
           ETH24: ${{ steps.market.outputs.ETH24 }}
         run: |
           set -euo pipefail
-          IDEA="Create a professional CryptoPilot AI daily crypto-market Short for a global English-speaking audience. Bitcoin is $${BTC}, 24h change ${BTC24}%. Ethereum is $${ETH}, 24h change ${ETH24}%. Make 4 connected vertical scenes totaling about 32 seconds: a strong 0-3 second hook; BTC and ETH snapshot; one factual volatility or market-movement observation without inventing news; concise informational AI-style analysis, CTA to CryptoPilot AI, and a small market-information-not-financial-advice disclaimer. Do not promise profits, returns, or guaranteed outcomes. Modern clean fintech aesthetic, English narration, English subtitles, portrait 9:16."
-          curl -fsS -X POST http://127.0.0.1:8765/api/tasks/creative \
-            -F "idea=$IDEA" \
-            -F 'creative_name=CryptoPilot Daily Video' \
-            -F 'style=modern professional fintech crypto market, clean cinematic motion graphics, dark premium dashboard aesthetic' \
-            -F 'chaining_mode=keyframes' \
-            -F 'video_width=768' \
-            -F 'video_height=1152' \
-            -F 'duration_source=manual' \
-            -F 'scene_count=4' \
-            -F 'uniform_duration=true' \
-            -F 'scene_durations_json=[8,8,8,8]' \
-            -F 'audio_enabled=true' \
-            -F 'audio_voice=en-US-AriaNeural' \
-            -F 'audio_rate=+0%' \
-            -F 'audio_lang=en' \
-            -F 'subtitle_enabled=true' \
-            -F 'subtitle_style_mode=fixed' \
-            -F 'subtitle_fontsize=42' \
-            -F 'subtitle_position=bottom' \
-            -F 'subtitle_stroke_width=2' \
-            -F 'execution_mode=auto' \
+          IDEA="Create a professional CryptoPilot AI daily crypto market Short for a global English speaking audience. Bitcoin is $${BTC}, 24h change ${BTC24} percent. Ethereum is $${ETH}, 24h change ${ETH24} percent. Make 4 connected vertical scenes totaling about 32 seconds: a strong 0-3 second hook; BTC and ETH snapshot; one factual volatility or market movement observation without inventing news; concise informational AI style analysis; CTA to CryptoPilot AI; and a small market information not financial advice disclaimer. Do not promise profits, returns, or guaranteed outcomes. Modern clean fintech aesthetic, English narration, English subtitles, portrait 9:16."
+          IDEA=$(printf '%s' "$IDEA" | LC_ALL=C tr -cd '\11\12\15\40-\176')
+          curl -fsS --retry 3 --retry-all-errors -X POST http://127.0.0.1:8765/api/tasks/creative \
+            --form-string "idea=$IDEA" \
+            --form-string 'creative_name=CryptoPilot Daily Video' \
+            --form-string 'style=modern professional fintech crypto market, clean cinematic motion graphics, dark premium dashboard aesthetic' \
+            --form-string 'chaining_mode=keyframes' \
+            --form-string 'video_width=768' \
+            --form-string 'video_height=1152' \
+            --form-string 'duration_source=manual' \
+            --form-string 'scene_count=4' \
+            --form-string 'uniform_duration=true' \
+            --form-string 'scene_durations_json=[8,8,8,8]' \
+            --form-string 'audio_enabled=true' \
+            --form-string 'audio_voice=en-US-AriaNeural' \
+            --form-string 'audio_rate=+0%' \
+            --form-string 'audio_lang=en' \
+            --form-string 'subtitle_enabled=true' \
+            --form-string 'subtitle_style_mode=fixed' \
+            --form-string 'subtitle_fontsize=42' \
+            --form-string 'subtitle_position=bottom' \
+            --form-string 'subtitle_stroke_width=2' \
+            --form-string 'execution_mode=auto' \
             > task.json
-          TASK_ID=$(jq -r '.task_id' task.json)
-          test -n "$TASK_ID" && test "$TASK_ID" != null
+          cat task.json
+          TASK_ID=$(jq -r '.task_id // empty' task.json)
+          test -n "$TASK_ID"
           echo "TASK_ID=$TASK_ID" >> "$GITHUB_ENV"
 
       - name: Wait for completed video
@@ -83,10 +85,10 @@ jobs:
           set -euo pipefail
           for i in $(seq 1 180); do
             curl -fsS "http://127.0.0.1:8765/api/tasks/$TASK_ID" -o state.json
-            STATUS=$(jq -r '.status' state.json)
+            STATUS=$(jq -r '.status // empty' state.json)
             echo "[$i] status=$STATUS"
             if [ "$STATUS" = "COMPLETED" ]; then exit 0; fi
-            if [ "$STATUS" = "FAILED" ]; then cat state.json; docker logs agnes-video || true; exit 1; fi
+            if [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "ERROR" ]; then cat state.json; docker logs agnes-video || true; exit 1; fi
             sleep 10
           done
           cat state.json
@@ -96,8 +98,8 @@ jobs:
       - name: Collect generated video
         run: |
           set -euo pipefail
-          VIDEO_PATH=$(jq -r '.final_video_file' state.json)
-          test -n "$VIDEO_PATH" && test "$VIDEO_PATH" != null
+          VIDEO_PATH=$(jq -r '.final_video_file // empty' state.json)
+          test -n "$VIDEO_PATH"
           test -f "$VIDEO_PATH"
           mkdir -p dist
           cp "$VIDEO_PATH" dist/CryptoPilot-Daily-Short.mp4
