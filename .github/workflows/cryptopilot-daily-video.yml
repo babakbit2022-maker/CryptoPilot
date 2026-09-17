@@ -43,8 +43,10 @@ jobs:
           docker logs agnes-video || true
           exit 1
 
-      - name: Build daily educational topic
-        id: topic
+      - name: Build daily content mix
+        id: content
+        env:
+          DAY: ${{ github.run_number }}
         run: |
           set -euo pipefail
           topics=(
@@ -64,24 +66,24 @@ jobs:
             'Diversification basics: explain concentration risk without recommending specific assets.'
             'Trading journal: explain what a useful trading journal records and how it helps review decisions.'
           )
-          INDEX=$(( $(date -u +%j) % ${#topics[@]} ))
+          INDEX=$(( DAY % ${#topics[@]} ))
           echo "TOPIC=${topics[$INDEX]}" >> "$GITHUB_OUTPUT"
 
-      - name: Generate CryptoPilot Educational Short
+      - name: Generate CryptoPilot Educational Market Short
         env:
           BTC: ${{ steps.market.outputs.BTC }}
           BTC24: ${{ steps.market.outputs.BTC24 }}
           ETH: ${{ steps.market.outputs.ETH }}
           ETH24: ${{ steps.market.outputs.ETH24 }}
-          TOPIC: ${{ steps.topic.outputs.TOPIC }}
+          TOPIC: ${{ steps.content.outputs.TOPIC }}
         run: |
           set -euo pipefail
-          IDEA="Create an original CryptoPilot AI educational crypto trading Short for a global English speaking audience. Today's lesson: ${TOPIC} Current market context only: Bitcoin is $${BTC}, 24h change ${BTC24} percent; Ethereum is $${ETH}, 24h change ${ETH24} percent. Make 4 connected vertical scenes totaling about 32 seconds. Scene 1: a strong educational hook. Scene 2: explain the concept clearly in simple language. Scene 3: give a neutral hypothetical example using invented numbers, not a real trade signal. Scene 4: one key takeaway and a subtle CTA to CryptoPilot AI. The video must provide genuine educational value, use original narration and original visual concepts, and materially vary the lesson from other days. Do not give personalized financial advice, do not tell viewers to buy, sell, long, short, or use leverage, and do not promise profits, returns, or guaranteed outcomes. Do not present an AI persona as a financial advisor. Include a small 'Educational content, not financial advice' disclaimer. Modern clean fintech aesthetic, English narration, English subtitles, portrait 9:16."
+          IDEA="Create an original CryptoPilot AI daily crypto Short for a global English speaking audience. This channel mixes four content types: useful trading education, factual current crypto market news and movement context, light entertaining/fun crypto moments, and occasional product education about CryptoPilot AI. Today's educational lesson is: ${TOPIC} Current factual market context: Bitcoin is $${BTC}, 24h change ${BTC24} percent; Ethereum is $${ETH}, 24h change ${ETH24} percent. Make 4 connected vertical scenes totaling about 32 seconds. Scene 1: a strong hook that can be educational, surprising, funny, or market-news oriented. Scene 2: teach the day's trading concept clearly. Scene 3: connect the lesson to today's BTC/ETH market movement or a neutral hypothetical example. Scene 4: rotate naturally between a CryptoPilot AI product spotlight, a fun crypto observation, or a concise market takeaway. Product spotlights should accurately describe available CryptoPilot features such as live crypto market data, market risk context, coin details and technical analysis, AI Trade Vision screenshot analysis, Daily AI Picks for Premium users, and trader-focused market intelligence. Direct viewers to https://cryptopilot-ai-global-jwsiba.v2.appdeploy.ai/ and say they can explore the platform there. Never invent a feature that is not stated. Vary the balance across days so the channel does not become repetitive advertising. Use original narration and original visual concepts with genuine informational value. Do not give personalized financial advice, do not tell viewers to buy, sell, long, short, or use leverage, and do not promise profits, returns, or guaranteed outcomes. Do not invent breaking news. Clearly distinguish current market facts from hypothetical examples. Include a small 'Educational content, not financial advice' disclaimer. Modern clean fintech aesthetic with occasional playful visual moments, English narration, English subtitles, portrait 9:16."
           IDEA=$(printf '%s' "$IDEA" | LC_ALL=C tr -cd '\11\12\15\40-\176')
           curl -fsS --retry 3 --retry-all-errors -X POST http://127.0.0.1:8765/api/tasks/creative \
             --form-string "idea=$IDEA" \
-            --form-string 'creative_name=CryptoPilot Daily Educational Video' \
-            --form-string 'style=modern professional fintech education, clean cinematic motion graphics, dark premium dashboard aesthetic, original diagrams and chart concepts' \
+            --form-string 'creative_name=CryptoPilot Daily Education News Fun Promo' \
+            --form-string 'style=modern professional fintech education and crypto news, clean cinematic motion graphics, dark premium dashboard aesthetic, original diagrams, charts and occasional playful visual humor' \
             --form-string 'chaining_mode=keyframes' \
             --form-string 'video_width=768' \
             --form-string 'video_height=1152' \
@@ -135,7 +137,7 @@ jobs:
         with:
           tag_name: daily-video
           name: CryptoPilot Daily Video
-          body: Latest automatically generated CryptoPilot Daily educational Short.
+          body: Latest automatically generated CryptoPilot education, market news, fun and product spotlight Short.
           prerelease: true
           make_latest: false
           files: dist/CryptoPilot-Daily-Short.mp4
