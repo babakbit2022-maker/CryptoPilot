@@ -22,32 +22,32 @@ jobs:
         shell: bash
         run: |
           set -e
-          BTC=$(curl -fsSL 'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true' | python -c "import sys,json; d=json.load(sys.stdin)['bitcoin']; print(f\"{d['usd']:.2f}|{d.get('usd_24h_change',0):.2f}\")")
-          ETH=$(curl -fsSL 'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd&include_24hr_change=true' | python -c "import sys,json; d=json.load(sys.stdin)['ethereum']; print(f\"{d['usd']:.2f}|{d.get('usd_24h_change',0):.2f}\")")
-          echo "btc=$BTC" >> "$GITHUB_OUTPUT"
-          echo "eth=$ETH" >> "$GITHUB_OUTPUT"
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, urllib.request
+          def get(coin):
+              u=f'https://api.coingecko.com/api/v3/simple/price?ids={coin}&vs_currencies=usd&include_24hr_change=true'
+              d=json.load(urllib.request.urlopen(u, timeout=20))[coin]
+              return f"{d['usd']:.2f}", f"{d.get('usd_24h_change', 0):.2f}"
+          bp,bc=get('bitcoin'); ep,ec=get('ethereum')
+          print(f'btc_price={bp}'); print(f'btc_change={bc}'); print(f'eth_price={ep}'); print(f'eth_change={ec}')
+          PY
 
       - name: Prepare free generator
+        env:
+          BTC_PRICE: ${{ steps.market.outputs.btc_price }}
+          BTC_CHANGE: ${{ steps.market.outputs.btc_change }}
+          ETH_PRICE: ${{ steps.market.outputs.eth_price }}
+          ETH_CHANGE: ${{ steps.market.outputs.eth_change }}
         shell: bash
         run: |
           set -e
           git clone --depth 1 https://github.com/itsPremkumar/Automated-Video-Generator.git /tmp/avg
           mkdir -p /tmp/avg/input/scripts /tmp/avg/output
-          cat > /tmp/avg/input/scripts/input-scripts.json <<'JSON'
-          [{"id":"cryptopilot-daily","title":"CryptoPilot Daily Market Brief","orientation":"portrait","language":"english","script":"CryptoPilot AI Daily Market Brief. Bitcoin is trading near $BTC_PRICE, with a 24 hour move of $BTC_CHANGE percent. Ethereum is near $ETH_PRICE, with a 24 hour move of $ETH_CHANGE percent. Remember: price moves fast, so manage risk and never treat an AI analysis as a guarantee. Check CryptoPilot AI for live market data, technical analysis, Market Risk, Daily AI Picks, and AI Trade Vision. Learn first, trade carefully, and verify every decision yourself."}]
-          JSON
           python - <<'PY'
           import json, os
-          p='/tmp/avg/input/scripts/input-scripts.json'
-          s=open(p).read()
-          s=s.replace('$BTC_PRICE',os.environ['BTC_PRICE']).replace('$BTC_CHANGE',os.environ['BTC_CHANGE']).replace('$ETH_PRICE',os.environ['ETH_PRICE']).replace('$ETH_CHANGE',os.environ['ETH_CHANGE'])
-          open(p,'w').write(s)
+          job={"id":"cryptopilot-daily","title":"CryptoPilot Daily Market Brief","orientation":"portrait","language":"english","script":f"CryptoPilot AI Daily Market Brief. Bitcoin is trading near ${os.environ['BTC_PRICE']}, with a 24 hour move of {os.environ['BTC_CHANGE']} percent. Ethereum is near ${os.environ['ETH_PRICE']}, with a 24 hour move of {os.environ['ETH_CHANGE']} percent. Price moves fast, so manage risk and never treat AI analysis as a guarantee. Check CryptoPilot AI for live market data, technical analysis, Market Risk, Daily AI Picks, and AI Trade Vision. Learn first, trade carefully, and verify every decision yourself."}
+          json.dump([job], open('/tmp/avg/input/scripts/input-scripts.json','w'))
           PY
-        env:
-          BTC_PRICE: ${{ steps.market.outputs.btc && fromJSON('[''"'"''${{ steps.market.outputs.btc }}''"'"'']')[0] || 'unknown' }}
-          BTC_CHANGE: 'market'
-          ETH_PRICE: 'market'
-          ETH_CHANGE: 'market'
 
       - name: Generate MP4 with free open-source pipeline
         shell: bash
