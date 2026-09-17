@@ -59,8 +59,11 @@ jobs:
         run: |
           set -euo pipefail
           cd /tmp/avg
+          python3 -m venv /tmp/edge-tts-venv
+          /tmp/edge-tts-venv/bin/pip install --quiet --disable-pip-version-check edge-tts
+          export PATH="/tmp/edge-tts-venv/bin:$PATH"
           npm ci --no-audit --no-fund
-          TTS_PROVIDER=edge-tts OPENVERSE_ENABLED=true npm run generate
+          MEDIA_VERIFICATION_ENABLED=false TTS_PROVIDER=edge-tts OPENVERSE_ENABLED=true npm run generate
           mkdir -p "$GITHUB_WORKSPACE/dist"
           MP4=$(find output -type f -iname '*.mp4' | head -n 1)
           test -n "$MP4"
