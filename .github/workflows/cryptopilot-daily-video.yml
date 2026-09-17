@@ -1,10 +1,6 @@
 name: CryptoPilot Daily Video
 
 'on':
-  push:
-    branches: [main]
-  schedule:
-    - cron: '0 1 * * *'
   workflow_dispatch:
 
 permissions:
@@ -19,6 +15,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
+      - name: Checkout CryptoPilot
+        uses: actions/checkout@v4
       - name: Get current market snapshot
         id: market
         run: |
@@ -28,7 +26,6 @@ jobs:
           echo "BTC24=$(jq -r '.bitcoin.usd_24h_change' market.json)" >> "$GITHUB_OUTPUT"
           echo "ETH=$(jq -r '.ethereum.usd' market.json)" >> "$GITHUB_OUTPUT"
           echo "ETH24=$(jq -r '.ethereum.usd_24h_change' market.json)" >> "$GITHUB_OUTPUT"
-
       - name: Start free Agnes video generator
         continue-on-error: true
         env:
@@ -39,40 +36,19 @@ jobs:
           mkdir -p "$RUNNER_TEMP/agnes/working" "$RUNNER_TEMP/agnes/config"
           docker pull lcy362/free-short-video:latest
           docker run -d --name agnes-video -p 8765:8765 -e AGNES_API_KEY="$AGNES_API_KEY" -v "$RUNNER_TEMP/agnes/working:/app/.working_dir" -v "$RUNNER_TEMP/agnes/config:/app/.agnes_config" lcy362/free-short-video:latest
-          for i in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:8765/api/health >/dev/null; then exit 0; fi
-            sleep 5
-          done
+          for i in $(seq 1 60); do if curl -fsS http://127.0.0.1:8765/api/health >/dev/null; then exit 0; fi; sleep 5; done
           docker logs agnes-video || true
           exit 1
-
       - name: Build daily topic
         id: content
         env:
           DAY: ${{ github.run_number }}
         run: |
           set -euo pipefail
-          topics=(
-            'Support and resistance: explain what the levels mean and why traders watch reactions near them.'
-            'Stop loss basics: explain the purpose of a stop loss and why position size matters.'
-            'Risk to reward: explain the concept with a simple 1 to 2 example.'
-            'RSI basics: explain what RSI measures and why extremes are not automatic signals.'
-            'Trading volume: explain why volume adds context to price movement.'
-            'Breakouts and fakeouts: explain the difference and why confirmation matters.'
-            'Candlestick basics: explain open, high, low and close.'
-            'Market structure: explain higher highs, higher lows, lower highs and lower lows.'
-            'Leverage basics: explain how leverage magnifies gains and losses.'
-            'Trading psychology: explain FOMO and revenge trading.'
-            'Moving averages: explain how traders use them as context.'
-            'Volatility: explain what volatility means in crypto markets.'
-            'Liquidity basics: explain liquidity, execution and slippage.'
-            'Diversification basics: explain concentration risk without recommending assets.'
-            'Trading journal: explain what a useful trading journal records.'
-          )
+          topics=('Support and resistance basics.' 'Stop loss basics.' 'Risk to reward basics.' 'RSI basics.' 'Trading volume basics.' 'Breakouts and fakeouts.' 'Candlestick basics.' 'Market structure basics.' 'Leverage risk basics.' 'Trading psychology basics.' 'Moving averages.' 'Crypto volatility.' 'Liquidity and slippage.' 'Diversification basics.' 'Trading journal basics.')
           INDEX=$(( DAY % ${#topics[@]} ))
           echo "TOPIC=${topics[$INDEX]}" >> "$GITHUB_OUTPUT"
-
-      - name: Generate CryptoPilot Short with ASCII-safe request
+      - name: Generate CryptoPilot Short with Agnes
         id: create
         continue-on-error: true
         env:
@@ -83,64 +59,23 @@ jobs:
           TOPIC: ${{ steps.content.outputs.TOPIC }}
         run: |
           set -euo pipefail
-          IDEA="Create an original CryptoPilot AI daily crypto Short. Topic: ${TOPIC} Current BTC price USD ${BTC}, BTC 24h change ${BTC24} percent. Current ETH price USD ${ETH}, ETH 24h change ${ETH24} percent. Make four connected vertical scenes, eight seconds each. Teach the topic clearly. Include one neutral market observation using the BTC and ETH facts. Include one concise CryptoPilot AI product mention. Mention live market data, market risk context, coin details, AI Trade Vision screenshot analysis, and Premium Daily AI Picks only when relevant. Website: https://cryptopilot-ai-global-jwsiba.v2.appdeploy.ai/ . Use English narration and subtitles. No personalized financial advice. No buy, sell, long, short or leverage instructions. No profit promises. No invented breaking news. Educational content, not financial advice. Modern fintech style."
+          IDEA="Create an original CryptoPilot AI educational crypto Short. Topic: ${TOPIC} BTC price USD ${BTC}, BTC 24h change ${BTC24} percent. ETH price USD ${ETH}, ETH 24h change ${ETH24} percent. Four connected vertical scenes, eight seconds each. Include a neutral market observation, a concise CryptoPilot AI product mention, live market data, market risk context, coin details, AI Trade Vision and Premium Daily AI Picks when relevant. Website: https://cryptopilot-ai-global-jwsiba.v2.appdeploy.ai/ . English narration and subtitles. No personalized financial advice, buy or sell instructions, profit promises or invented breaking news."
           IDEA=$(printf '%s' "$IDEA" | LC_ALL=C tr -cd '\11\12\15\40-\176')
-          curl -fsS --retry 3 --retry-all-errors -X POST http://127.0.0.1:8765/api/tasks/creative \
-            --form-string "idea=$IDEA" \
-            --form-string 'creative_name=CryptoPilot Daily Short' \
-            --form-string 'style=clean professional fintech education, simple motion graphics, original charts' \
-            --form-string 'chaining_mode=keyframes' \
-            --form-string 'video_width=768' \
-            --form-string 'video_height=1152' \
-            --form-string 'duration_source=manual' \
-            --form-string 'scene_count=4' \
-            --form-string 'uniform_duration=true' \
-            --form-string 'scene_durations_json=[8,8,8,8]' \
-            --form-string 'audio_enabled=true' \
-            --form-string 'audio_voice=en-US-AriaNeural' \
-            --form-string 'audio_rate=+0%' \
-            --form-string 'audio_lang=en' \
-            --form-string 'subtitle_enabled=true' \
-            --form-string 'subtitle_style_mode=fixed' \
-            --form-string 'subtitle_fontsize=42' \
-            --form-string 'subtitle_position=bottom' \
-            --form-string 'subtitle_stroke_width=2' \
-            --form-string 'execution_mode=auto' \
-            > task.json
-          cat task.json
-          TASK_ID=$(jq -r '.task_id // empty' task.json)
-          test -n "$TASK_ID"
-          echo "TASK_ID=$TASK_ID" >> "$GITHUB_ENV"
-
+          curl -fsS --retry 3 --retry-all-errors -X POST http://127.0.0.1:8765/api/tasks/creative --form-string "idea=$IDEA" --form-string 'creative_name=CryptoPilot Daily Short' --form-string 'style=clean professional fintech education, original motion graphics' --form-string 'chaining_mode=keyframes' --form-string 'video_width=768' --form-string 'video_height=1152' --form-string 'duration_source=manual' --form-string 'scene_count=4' --form-string 'uniform_duration=true' --form-string 'scene_durations_json=[8,8,8,8]' --form-string 'audio_enabled=true' --form-string 'audio_voice=en-US-AriaNeural' --form-string 'audio_rate=+0%' --form-string 'audio_lang=en' --form-string 'subtitle_enabled=true' --form-string 'subtitle_style_mode=fixed' --form-string 'subtitle_fontsize=42' --form-string 'subtitle_position=bottom' --form-string 'subtitle_stroke_width=2' --form-string 'execution_mode=auto' > task.json
+          TASK_ID=$(jq -r '.task_id // empty' task.json); test -n "$TASK_ID"; echo "TASK_ID=$TASK_ID" >> "$GITHUB_ENV"
       - name: Wait for Agnes video
         if: steps.create.outcome == 'success'
         continue-on-error: true
         run: |
           set -euo pipefail
-          for i in $(seq 1 180); do
-            curl -fsS "http://127.0.0.1:8765/api/tasks/$TASK_ID" -o state.json
-            STATUS=$(jq -r '.status // empty' state.json)
-            echo "[$i] status=$STATUS"
-            if [ "$STATUS" = "COMPLETED" ]; then exit 0; fi
-            if [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "ERROR" ]; then cat state.json; docker logs agnes-video || true; exit 1; fi
-            sleep 10
-          done
-          cat state.json
-          docker logs agnes-video || true
-          exit 1
-
+          for i in $(seq 1 180); do curl -fsS "http://127.0.0.1:8765/api/tasks/$TASK_ID" -o state.json; STATUS=$(jq -r '.status // empty' state.json); echo "[$i] status=$STATUS"; if [ "$STATUS" = 'COMPLETED' ]; then exit 0; fi; if [ "$STATUS" = 'FAILED' ] || [ "$STATUS" = 'ERROR' ]; then cat state.json; docker logs agnes-video || true; exit 1; fi; sleep 10; done; cat state.json; docker logs agnes-video || true; exit 1
       - name: Prepare generated video
         id: video
         if: steps.create.outcome == 'success'
         continue-on-error: true
         run: |
           set -euo pipefail
-          VIDEO_PATH=$(jq -r '.final_video_file // empty' state.json)
-          test -n "$VIDEO_PATH"
-          test -f "$VIDEO_PATH"
-          mkdir -p dist
-          cp "$VIDEO_PATH" dist/CryptoPilot-Daily-Short.mp4
-
+          VIDEO_PATH=$(jq -r '.final_video_file // empty' state.json); test -n "$VIDEO_PATH"; test -f "$VIDEO_PATH"; mkdir -p dist; cp "$VIDEO_PATH" dist/CryptoPilot-Daily-Short.mp4
       - name: Build guaranteed fallback Short
         if: steps.video.outcome != 'success'
         env:
@@ -168,15 +103,11 @@ Dialogue: 0,0:00:16.00,0:00:24.00,Main,,0,0,0,,ETH: $${ETH}\N24h: ${ETH24}%
 Dialogue: 0,0:00:24.00,0:00:32.00,Main,,0,0,0,,Learn. Analyze. Manage risk.\Ncryptopilot-ai-global-jwsiba.v2.appdeploy.ai\NEducational content, not financial advice.
 EOF
           ffmpeg -y -f lavfi -i 'color=c=0x0b1020:s=768x1152:r=30' -vf "ass=fallback/short.ass" -t 32 -pix_fmt yuv420p -c:v libx264 -preset veryfast -crf 27 -an dist/CryptoPilot-Daily-Short.mp4
-          test -s dist/CryptoPilot-Daily-Short.mp4
-          ls -lh dist/CryptoPilot-Daily-Short.mp4
-
       - name: Verify video file
         run: |
           set -euo pipefail
           test -s dist/CryptoPilot-Daily-Short.mp4
           ffprobe -v error -show_entries format=duration -show_entries stream=codec_name,width,height -of default=noprint_wrappers=1 dist/CryptoPilot-Daily-Short.mp4
-
       - name: Publish stable public video asset
         uses: softprops/action-gh-release@v3
         with:
@@ -189,6 +120,3 @@ EOF
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Print stable media URL
-        run: echo 'https://github.com/babakbit2022-maker/CryptoPilot/releases/download/daily-video/CryptoPilot-Daily-Short.mp4'
