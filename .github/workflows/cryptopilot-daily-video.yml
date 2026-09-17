@@ -30,6 +30,7 @@ jobs:
           echo "ETH24=$(jq -r '.ethereum.usd_24h_change' market.json)" >> "$GITHUB_OUTPUT"
 
       - name: Start free Agnes video generator
+        continue-on-error: true
         env:
           AGNES_API_KEY: ${{ secrets.AGNES_API_KEY }}
         run: |
@@ -113,6 +114,7 @@ jobs:
 
       - name: Wait for Agnes video
         if: steps.create.outcome == 'success'
+        continue-on-error: true
         run: |
           set -euo pipefail
           for i in $(seq 1 180); do
@@ -120,10 +122,11 @@ jobs:
             STATUS=$(jq -r '.status // empty' state.json)
             echo "[$i] status=$STATUS"
             if [ "$STATUS" = "COMPLETED" ]; then exit 0; fi
-            if [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "ERROR" ]; then cat state.json; exit 1; fi
+            if [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "ERROR" ]; then cat state.json; docker logs agnes-video || true; exit 1; fi
             sleep 10
           done
           cat state.json
+          docker logs agnes-video || true
           exit 1
 
       - name: Prepare generated video
@@ -167,6 +170,12 @@ EOF
           ffmpeg -y -f lavfi -i 'color=c=0x0b1020:s=768x1152:r=30' -vf "ass=fallback/short.ass" -t 32 -pix_fmt yuv420p -c:v libx264 -preset veryfast -crf 27 -an dist/CryptoPilot-Daily-Short.mp4
           test -s dist/CryptoPilot-Daily-Short.mp4
           ls -lh dist/CryptoPilot-Daily-Short.mp4
+
+      - name: Verify video file
+        run: |
+          set -euo pipefail
+          test -s dist/CryptoPilot-Daily-Short.mp4
+          ffprobe -v error -show_entries format=duration -show_entries stream=codec_name,width,height -of default=noprint_wrappers=1 dist/CryptoPilot-Daily-Short.mp4
 
       - name: Publish stable public video asset
         uses: softprops/action-gh-release@v3
