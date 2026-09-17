@@ -1,9 +1,14 @@
 name: CryptoPilot Free Video Generator
 
 'on':
+  push:
+    branches: [main]
   workflow_dispatch:
   schedule:
     - cron: '30 1 * * *'
+
+permissions:
+  contents: write
 
 concurrency:
   group: cryptopilot-free-video
@@ -21,7 +26,7 @@ jobs:
         id: market
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
           python - <<'PY' >> "$GITHUB_OUTPUT"
           import json, urllib.request
           def get(coin):
@@ -40,19 +45,19 @@ jobs:
           ETH_CHANGE: ${{ steps.market.outputs.eth_change }}
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
           git clone --depth 1 https://github.com/itsPremkumar/Automated-Video-Generator.git /tmp/avg
           mkdir -p /tmp/avg/input/scripts /tmp/avg/output
           python - <<'PY'
           import json, os
-          job={"id":"cryptopilot-daily","title":"CryptoPilot Daily Market Brief","orientation":"portrait","language":"english","script":f"CryptoPilot AI Daily Market Brief. Bitcoin is trading near ${os.environ['BTC_PRICE']}, with a 24 hour move of {os.environ['BTC_CHANGE']} percent. Ethereum is near ${os.environ['ETH_PRICE']}, with a 24 hour move of {os.environ['ETH_CHANGE']} percent. Price moves fast, so manage risk and never treat AI analysis as a guarantee. Check CryptoPilot AI for live market data, technical analysis, Market Risk, Daily AI Picks, and AI Trade Vision. Learn first, trade carefully, and verify every decision yourself."}
-          json.dump([job], open('/tmp/avg/input/scripts/input-scripts.json','w'))
+          job={"id":"cryptopilot-daily","title":"CryptoPilot Daily Market Brief","orientation":"portrait","language":"english","voice":"en-US-AriaNeural","script":f"CryptoPilot AI Daily Market Brief. Bitcoin is trading near ${os.environ['BTC_PRICE']}, with a 24 hour move of {os.environ['BTC_CHANGE']} percent. Ethereum is near ${os.environ['ETH_PRICE']}, with a 24 hour move of {os.environ['ETH_CHANGE']} percent. Price moves fast, so manage risk and never treat AI analysis as a guarantee. Check CryptoPilot AI for live market data, technical analysis, Market Risk, Daily AI Picks, and AI Trade Vision. Learn first, trade carefully, and verify every decision yourself."}
+          with open('/tmp/avg/input/scripts/input-scripts.json','w') as f: json.dump([job], f)
           PY
 
       - name: Generate MP4 with free open-source pipeline
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
           cd /tmp/avg
           npm ci --no-audit --no-fund
           TTS_PROVIDER=edge-tts OPENVERSE_ENABLED=true npm run generate
@@ -64,7 +69,7 @@ jobs:
       - name: Verify MP4
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
           test -s dist/CryptoPilot-Daily-Short.mp4
           ffprobe -v error -show_entries format=duration -show_entries stream=codec_name,width,height -of default=noprint_wrappers=1 dist/CryptoPilot-Daily-Short.mp4
 
