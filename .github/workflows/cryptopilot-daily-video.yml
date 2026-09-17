@@ -43,7 +43,7 @@ jobs:
           docker logs agnes-video || true
           exit 1
 
-      - name: Build daily content mix
+      - name: Build daily topic
         id: content
         env:
           DAY: ${{ github.run_number }}
@@ -52,24 +52,26 @@ jobs:
           topics=(
             'Support and resistance: explain what the levels mean and why traders watch reactions near them.'
             'Stop loss basics: explain the purpose of a stop loss and why position size matters.'
-            'Risk to reward: explain the concept with a simple 1-to-2 example, without telling viewers to take a trade.'
-            'RSI basics: explain what RSI measures and why an extreme reading is not automatically a buy or sell signal.'
-            'Trading volume: explain why volume can add context to a price move and what it cannot prove.'
+            'Risk to reward: explain the concept with a simple 1 to 2 example.'
+            'RSI basics: explain what RSI measures and why extremes are not automatic signals.'
+            'Trading volume: explain why volume adds context to price movement.'
             'Breakouts and fakeouts: explain the difference and why confirmation matters.'
-            'Candlestick basics: explain what open, high, low and close represent on a candle.'
+            'Candlestick basics: explain open, high, low and close.'
             'Market structure: explain higher highs, higher lows, lower highs and lower lows.'
-            'Leverage basics: explain how leverage magnifies both gains and losses and why liquidation risk exists.'
-            'Trading psychology: explain why FOMO and revenge trading can damage decision-making.'
-            'Moving averages: explain what they are and how traders use them as context, not predictions.'
-            'Volatility: explain what volatility means and why a volatile market is not automatically bullish or bearish.'
-            'Liquidity basics: explain why liquidity matters for execution and slippage.'
-            'Diversification basics: explain concentration risk without recommending specific assets.'
-            'Trading journal: explain what a useful trading journal records and how it helps review decisions.'
+            'Leverage basics: explain how leverage magnifies gains and losses.'
+            'Trading psychology: explain FOMO and revenge trading.'
+            'Moving averages: explain how traders use them as context.'
+            'Volatility: explain what volatility means in crypto markets.'
+            'Liquidity basics: explain liquidity, execution and slippage.'
+            'Diversification basics: explain concentration risk without recommending assets.'
+            'Trading journal: explain what a useful trading journal records.'
           )
           INDEX=$(( DAY % ${#topics[@]} ))
           echo "TOPIC=${topics[$INDEX]}" >> "$GITHUB_OUTPUT"
 
-      - name: Generate CryptoPilot Educational Market Short
+      - name: Generate CryptoPilot Short with ASCII-safe request
+        id: create
+        continue-on-error: true
         env:
           BTC: ${{ steps.market.outputs.BTC }}
           BTC24: ${{ steps.market.outputs.BTC24 }}
@@ -78,12 +80,12 @@ jobs:
           TOPIC: ${{ steps.content.outputs.TOPIC }}
         run: |
           set -euo pipefail
-          IDEA="Create an original CryptoPilot AI daily crypto Short for a global English speaking audience. This channel mixes four content types: useful trading education, factual current crypto market news and movement context, light entertaining/fun crypto moments, and occasional product education about CryptoPilot AI. Today's educational lesson is: ${TOPIC} Current factual market context: Bitcoin is $${BTC}, 24h change ${BTC24} percent; Ethereum is $${ETH}, 24h change ${ETH24} percent. Make 4 connected vertical scenes totaling about 32 seconds. Scene 1: a strong hook that can be educational, surprising, funny, or market-news oriented. Scene 2: teach the day's trading concept clearly. Scene 3: connect the lesson to today's BTC/ETH market movement or a neutral hypothetical example. Scene 4: rotate naturally between a CryptoPilot AI product spotlight, a fun crypto observation, or a concise market takeaway. Product spotlights should accurately describe available CryptoPilot features such as live crypto market data, market risk context, coin details and technical analysis, AI Trade Vision screenshot analysis, Daily AI Picks for Premium users, and trader-focused market intelligence. Direct viewers to https://cryptopilot-ai-global-jwsiba.v2.appdeploy.ai/ and say they can explore the platform there. Never invent a feature that is not stated. Vary the balance across days so the channel does not become repetitive advertising. Use original narration and original visual concepts with genuine informational value. Do not give personalized financial advice, do not tell viewers to buy, sell, long, short, or use leverage, and do not promise profits, returns, or guaranteed outcomes. Do not invent breaking news. Clearly distinguish current market facts from hypothetical examples. Include a small 'Educational content, not financial advice' disclaimer. Modern clean fintech aesthetic with occasional playful visual moments, English narration, English subtitles, portrait 9:16."
+          IDEA="Create an original CryptoPilot AI daily crypto Short. Topic: ${TOPIC} Current BTC price USD ${BTC}, BTC 24h change ${BTC24} percent. Current ETH price USD ${ETH}, ETH 24h change ${ETH24} percent. Make four connected vertical scenes, eight seconds each. Teach the topic clearly. Include one neutral market observation using the BTC and ETH facts. Include one concise CryptoPilot AI product mention. Mention live market data, market risk context, coin details, AI Trade Vision screenshot analysis, and Premium Daily AI Picks only when relevant. Website: https://cryptopilot-ai-global-jwsiba.v2.appdeploy.ai/ . Use English narration and subtitles. No personalized financial advice. No buy, sell, long, short or leverage instructions. No profit promises. No invented breaking news. Educational content, not financial advice. Modern fintech style."
           IDEA=$(printf '%s' "$IDEA" | LC_ALL=C tr -cd '\11\12\15\40-\176')
           curl -fsS --retry 3 --retry-all-errors -X POST http://127.0.0.1:8765/api/tasks/creative \
             --form-string "idea=$IDEA" \
-            --form-string 'creative_name=CryptoPilot Daily Education News Fun Promo' \
-            --form-string 'style=modern professional fintech education and crypto news, clean cinematic motion graphics, dark premium dashboard aesthetic, original diagrams, charts and occasional playful visual humor' \
+            --form-string 'creative_name=CryptoPilot Daily Short' \
+            --form-string 'style=clean professional fintech education, simple motion graphics, original charts' \
             --form-string 'chaining_mode=keyframes' \
             --form-string 'video_width=768' \
             --form-string 'video_height=1152' \
@@ -107,7 +109,8 @@ jobs:
           test -n "$TASK_ID"
           echo "TASK_ID=$TASK_ID" >> "$GITHUB_ENV"
 
-      - name: Wait for completed video
+      - name: Wait for Agnes video
+        if: steps.create.outcome == 'success'
         run: |
           set -euo pipefail
           for i in $(seq 1 180); do
@@ -115,14 +118,16 @@ jobs:
             STATUS=$(jq -r '.status // empty' state.json)
             echo "[$i] status=$STATUS"
             if [ "$STATUS" = "COMPLETED" ]; then exit 0; fi
-            if [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "ERROR" ]; then cat state.json; docker logs agnes-video || true; exit 1; fi
+            if [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "ERROR" ]; then cat state.json; exit 1; fi
             sleep 10
           done
           cat state.json
-          docker logs agnes-video || true
           exit 1
 
-      - name: Collect generated video
+      - name: Prepare generated video
+        id: video
+        if: steps.create.outcome == 'success'
+        continue-on-error: true
         run: |
           set -euo pipefail
           VIDEO_PATH=$(jq -r '.final_video_file // empty' state.json)
@@ -130,6 +135,35 @@ jobs:
           test -f "$VIDEO_PATH"
           mkdir -p dist
           cp "$VIDEO_PATH" dist/CryptoPilot-Daily-Short.mp4
+
+      - name: Build guaranteed fallback Short
+        if: steps.video.outcome != 'success'
+        env:
+          BTC: ${{ steps.market.outputs.BTC }}
+          BTC24: ${{ steps.market.outputs.BTC24 }}
+          ETH: ${{ steps.market.outputs.ETH }}
+          ETH24: ${{ steps.market.outputs.ETH24 }}
+          TOPIC: ${{ steps.content.outputs.TOPIC }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist fallback
+          cat > fallback/short.ass <<EOF
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 768
+PlayResY: 1152
+[V4+ Styles]
+Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
+Style: Main,Arial,48,&H00FFFFFF,&H00FFFFFF,&H00111111,&H66000000,1,0,1,3,1,5,40,40,40,1
+[Events]
+Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
+Dialogue: 0,0:00:00.00,0:00:08.00,Main,,0,0,0,,CRYPTOPILOT AI\N${TOPIC}
+Dialogue: 0,0:00:08.00,0:00:16.00,Main,,0,0,0,,BTC: $${BTC}\N24h: ${BTC24}%
+Dialogue: 0,0:00:16.00,0:00:24.00,Main,,0,0,0,,ETH: $${ETH}\N24h: ${ETH24}%
+Dialogue: 0,0:00:24.00,0:00:32.00,Main,,0,0,0,,Learn. Analyze. Manage risk.\Ncryptopilot-ai-global-jwsiba.v2.appdeploy.ai\NEducational content, not financial advice.
+EOF
+          ffmpeg -y -f lavfi -i 'color=c=0x0b1020:s=768x1152:r=30' -vf "ass=fallback/short.ass" -t 32 -pix_fmt yuv420p -c:v libx264 -preset veryfast -crf 27 -an dist/CryptoPilot-Daily-Short.mp4
+          test -s dist/CryptoPilot-Daily-Short.mp4
           ls -lh dist/CryptoPilot-Daily-Short.mp4
 
       - name: Publish stable public video asset
@@ -137,7 +171,7 @@ jobs:
         with:
           tag_name: daily-video
           name: CryptoPilot Daily Video
-          body: Latest automatically generated CryptoPilot education, market news, fun and product spotlight Short.
+          body: Latest automatically generated CryptoPilot education and market Short.
           prerelease: true
           make_latest: false
           files: dist/CryptoPilot-Daily-Short.mp4
