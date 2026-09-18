@@ -1,9 +1,6 @@
 import express from 'express';
 
-// Public receive address used by the CryptoPilot payment flow. Environment configuration still wins.
-if (!process.env.USDT_TRC20_WALLET && !process.env.TRON_RECEIVE_ADDRESS) {
-  process.env.USDT_TRC20_WALLET = 'TLSqNCn8Jdsh6eV4kty3sdeWhcpJFPeVS5';
-}
+// Payment receive address must be supplied through environment configuration. Never hardcode or overwrite it in source.
 
 const originalStatic = express.static;
 const GA_ID = process.env.GA_MEASUREMENT_ID || '';
