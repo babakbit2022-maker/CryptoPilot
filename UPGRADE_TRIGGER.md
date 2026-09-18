@@ -1,0 +1,1 @@
+CryptoPilot product upgrade trigger.
