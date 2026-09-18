@@ -1,5 +1,9 @@
 import express from 'express';
 
+console.log('[CryptoPilot] bootstrap starting', { node: process.version, cwd: process.cwd(), port: process.env.PORT || 3000 });
+process.on('uncaughtException', (err) => console.error('[CryptoPilot] uncaughtException', err));
+process.on('unhandledRejection', (err) => console.error('[CryptoPilot] unhandledRejection', err));
+
 // Payment receive address must be supplied through environment configuration. Never hardcode or overwrite it in source.
 
 const originalStatic = express.static;
