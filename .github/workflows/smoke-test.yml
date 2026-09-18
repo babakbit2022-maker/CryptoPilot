@@ -16,7 +16,7 @@ jobs:
         shell: bash
         run: |
           set -e
-          BASE='${{ vars.PUBLIC_BASE_URL }}'
+          BASE='${{ vars.PUBLIC_BASE_URL || 'http://87.107.190.74' }}'
           if [ -z "$BASE" ]; then echo 'PUBLIC_BASE_URL is not configured; production smoke test skipped.'; exit 0; fi
           for path in /api/health /api/ready /api/market-status; do
             echo "Checking $BASE$path"
@@ -38,6 +38,7 @@ jobs:
         shell: bash
         run: |
           set -e
+          BASE='${{ vars.PUBLIC_BASE_URL || 'http://87.107.190.74' }}'
           URL="$BASE/api/market/BTCUSDT?tf=15m"
           code=$(curl -L -sS -o /tmp/btc.json -w '%{http_code}' --max-time 30 "$URL")
           cat /tmp/btc.json
