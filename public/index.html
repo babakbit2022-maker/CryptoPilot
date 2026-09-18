@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>CryptoPilot AI — Live Crypto Market Intelligence</title>
 <meta name="description" content="CryptoPilot AI — live crypto prices, market scanner, technical analysis, risk scoring and educational AI market insights.">
-<link rel="canonical" href="https://waterspout-pretty-rhinoceros.abasthan.app/">
+<link rel="canonical" href="http://87.107.190.74/">
 <meta property="og:title" content="CryptoPilot AI — Live Crypto Market Intelligence">
 <meta property="og:description" content="Live crypto markets, technical analysis, risk scoring and market scanner.">
 <meta property="og:type" content="website">
@@ -30,7 +30,7 @@
 #coins.cards .change{grid-column:3;font-size:12px}
 #coins.cards .price{grid-column:2;font-size:14px;margin:0}
 #coins.cards .muted{grid-column:4/6;text-align:right}
-#marketList.cards{display:block;border:1px solid var(--line);border-radius:16px;overflow:hidden}
+#marketList.cards{display:block;border:1px solid var(--line);border-radius:16px;overflow:auto;max-height:640px;scroll-behavior:smooth}
 #marketList.cards .coinCard{display:grid;grid-template-columns:44px minmax(180px,2fr) minmax(120px,1fr) minmax(100px,.8fr) minmax(100px,.8fr);align-items:center;gap:12px;border:0;border-bottom:1px solid #17283b;border-radius:0;padding:13px 16px;background:#091522;cursor:pointer;transform:none!important}
 #marketList.cards .coinCard:hover{background:#0d1d2d}
 #marketList.cards .coinCard:before{content:counter(cmc);counter-increment:cmc;color:#61748a;font-size:11px;text-align:center}
@@ -55,7 +55,6 @@
 <main class="page">
 <section class="hero"><div class="heroMain"><div class="eyebrow">Live market intelligence</div><h1>See the market. Understand the risk.</h1><p>CryptoPilot AI brings live crypto prices, technical indicators, market scanning and risk context into one clean workspace.</p><div class="chips"><span class="chip">● Multi-source market data</span><span class="chip">500 tracked assets</span><span class="chip">15m analysis</span><span class="chip">Educational only</span></div></div><aside class="heroSide"><div class="sideTitle">Market health</div><div id="healthScore" class="bigScore">—</div><div class="scoreLine"><i id="healthBar"></i></div><div class="sideRows"><div><small>BTC</small><b id="btcMini">—</b></div><div><small>ETH</small><b id="ethMini">—</b></div><div><small>Provider</small><b id="providerMini">—</b></div><div><small>Updated</small><b id="timeMini">—</b></div></div></aside></section>
 <section class="growthBanner"><div class="panelHead"><div><h2>🚀 Highest Growth Now</h2><span>Live 24h movers from the top-500 market universe</span></div><span class="muted">Auto-refresh</span></div><div id="growthBanner" class="growthItems"><div class="growthItem">Loading live gainers…</div></div></section>
-<section><div class="toolbar"><h2>Market overview</h2><span id="updated">Connecting to market data…</span></div><div class="cmcHead" style="display:grid;grid-template-columns:2fr 1fr .8fr .7fr .7fr;gap:16px;padding:10px 18px;color:var(--muted);font-size:10px;text-transform:uppercase;border:1px solid var(--line);border-bottom:0;border-radius:14px 14px 0 0;background:#071320"><span>Asset</span><span>Price</span><span>24h</span><span>Risk</span><span>Bull</span></div><div id="coins" class="cards"><div class="panel">Loading live markets…</div></div></section>
 <section class="dailyRisk"><aside class="riskPanel"><div class="eyebrow">LIVE MARKET RISK</div><div class="riskCircle" id="dailyRiskCircle"><b id="dailyRiskScore">—</b><span>/100</span></div><div style="text-align:center"><strong id="dailyRiskLabel">Loading</strong><div class="muted" style="font-size:10px;margin-top:5px">Breadth + momentum + volatility context</div></div></aside><div class="picksPanel"><div class="panelHead"><div><h2 style="margin:0">Daily AI Picks</h2><span>5 candidates from multi-timeframe live signals</span></div><span id="picksUpdated" class="muted">Loading…</span></div><div id="dailyPicks" class="picks"><div class="pick">Scanning live markets…</div></div><div class="muted" style="font-size:9px;margin-top:10px">Research-only signals. No pump or profit is guaranteed. Premium can unlock deeper reasoning when AI is configured.</div></div></section>
 \n<section class="contentGrid"><div class="panel"><div class="panelHead"><h2>Market scanner</h2><span>15m · ranked by signal strength</span></div><div class="tableWrap"><table class="table"><thead><tr><th>Asset</th><th>Price</th><th>24h</th><th>Bull</th><th>Bear</th><th>Risk</th><th>Setup</th></tr></thead><tbody id="scanner"><tr><td colspan="7">Loading…</td></tr></tbody></table></div></div><aside class="panel"><div class="panelHead"><h2>System status</h2><span>Live connectivity</span></div><div id="statusGrid" class="statusGrid"><div class="statusBox"><small>Market API</small><strong>Checking…</strong></div><div class="statusBox"><small>BTC</small><strong>Checking…</strong></div><div class="statusBox"><small>ETH</small><strong>Checking…</strong></div><div class="statusBox"><small>Scanner</small><strong>Checking…</strong></div></div><div class="detail"><div class="panelHead"><h2>Selected asset</h2><span id="selectedPair">BTC/USDT</span></div><div id="detailGrid" class="detailGrid"><div class="metric"><small>Price</small><b>—</b></div></div></div></aside></section>
 <section class="panel" style="margin-top:14px"><div class="panelHead"><h2>All Markets</h2><span>Top 500 by market cap · CMC-style list</span></div><input id="search" class="search" placeholder="Search Bitcoin, BTC, Ethereum, SOL…"><div id="marketList" class="cards"></div></section>
@@ -74,9 +73,7 @@ function openChart(symbol){location.href=`/crypto-chart.html?symbol=${encodeURIC
 function setLive(ok,txt){document.getElementById('liveText').textContent=txt;document.querySelector('.led').style.background=ok?'var(--green)':'var(--red)';document.querySelector('.led').style.boxShadow=ok?'0 0 13px var(--green)':'0 0 13px var(--red)'}
 async function load(){
  try{
-  const coins=await api('/api/coins');const universe=coins.coins||[];const pairs=universe.filter(x=>x.chartable).map(x=>x.pair).filter(Boolean);
-  const livePairs=pairs.slice(0,120);const live=(await Promise.all(livePairs.map(p=>api('/api/market/'+p+'?tf=15m').catch(()=>null)))).filter(Boolean).map(norm);const liveByPair=new Map(live.map(x=>[x.pair,x]));
-  const data=universe.map(x=>{const l=liveByPair.get(x.pair);return l?{...x,...l}:x});rows=data;
+  const coins=await api('/api/coins');const data=(coins.coins||[]).map(norm);rows=data;
   document.getElementById('coins').innerHTML=data.slice(0,12).map(coinCard).join('')||'<div class="panel">No market data returned.</div>';
   document.getElementById('marketList').innerHTML=data.map(coinCard).join('');document.getElementById('marketCount')?.replaceChildren(document.createTextNode((coins.count||data.length)+' assets'));
   const s=await api('/api/market-status');const online=s.markets?.filter(x=>x.online).length||0;setLive(online>0,online>0?'LIVE':'OFFLINE');
