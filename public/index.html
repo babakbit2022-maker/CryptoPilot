@@ -70,7 +70,6 @@ const money=n=>n==null||!Number.isFinite(Number(n))?'—':'$'+Number(n).toLocale
 const percent=n=>n==null||!Number.isFinite(Number(n))?'—':(Number(n)>=0?'+':'')+Number(n).toFixed(2)+'%';
 function norm(x){const a=x.analysis||{};return {...x,...a,symbol:x.symbol||x.pair?.replace('USDT',''),change24h:a.change24h??(a.momentum!=null?Number(a.momentum)*100:null)}}
 function coinCard(x){x=norm(x);const up=Number(x.change24h)>=0;const icon=x.image||'';return `<article class="coinCard" onclick="openChart('${x.symbol}')" title="Open live ${x.symbol} chart"><div class="coinHead"><div class="assetCell"><span class="assetIcon">${icon?'<img src="'+icon+'" alt="" loading="lazy">':'<span class="assetFallback">'+String(x.symbol||'?').slice(0,1)+'</span>'}</span><div><div class="coinName">${names[x.symbol]||x.name||x.symbol}</div><div class="pair">${x.symbol}/USDT</div></div></div><span class="change ${up?'up':'down'}">${percent(x.change24h)}</span></div><div class="price">${money(x.price)}</div><div class="muted" style="font-size:10px">Risk <b>${x.riskScore??'—'}</b> · Bull <b>${x.bullScore??'—'}</b></div></article>`}
-}
 function openChart(symbol){location.href=`/crypto-chart.html?symbol=${encodeURIComponent(symbol+'USDT')}&tf=1h`}
 function setLive(ok,txt){document.getElementById('liveText').textContent=txt;document.querySelector('.led').style.background=ok?'var(--green)':'var(--red)';document.querySelector('.led').style.boxShadow=ok?'0 0 13px var(--green)':'0 0 13px var(--red)'}
 async function load(){
