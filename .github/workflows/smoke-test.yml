@@ -38,7 +38,7 @@ jobs:
         shell: bash
         run: |
           set -e
-          URL='https://waterspout-pretty-rhinoceros.abasthan.app/api/market/BTCUSDT?tf=15m'
+          URL="$BASE/api/market/BTCUSDT?tf=15m"
           code=$(curl -L -sS -o /tmp/btc.json -w '%{http_code}' --max-time 30 "$URL")
           cat /tmp/btc.json
           echo
