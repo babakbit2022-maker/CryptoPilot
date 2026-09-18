@@ -97,7 +97,39 @@ function rsi(a,n=14){if(a.length<=n)return null;let g=0,l=0;for(let i=1;i<=n;i++
 function atr(rows,n=14){if(rows.length<=n)return null;const trs=[];for(let i=1;i<rows.length;i++){const h=rows[i].h,l=rows[i].l,pc=rows[i-1].c;trs.push(Math.max(h-l,Math.abs(h-pc),Math.abs(l-pc)));}return trs.slice(-n).reduce((s,v)=>s+v,0)/Math.min(n,trs.length);}
 function analyze(rows){const closes=rows.map(x=>x.c),vols=rows.map(x=>x.v),cur=closes.at(-1),e20=ema(closes,20),e50=ema(closes,50),e200=ema(closes,200),r=rsi(closes),a=atr(rows);const mom=closes.length>28?cur/closes.at(-29)-1:cur/closes[0]-1,avgVol=vols.slice(-20).reduce((s,v)=>s+v,0)/Math.min(20,vols.length),vr=avgVol?vols.at(-1)/avgVol:0;const recent=rows.slice(-50),support=Math.min(...recent.map(x=>x.l)),resistance=Math.max(...recent.map(x=>x.h));let bull=0;if(e20&&cur>e20)bull+=16;if(e50&&cur>e50)bull+=14;if(e200&&cur>e200)bull+=12;if(r>=50&&r<=68)bull+=16;else if(r>68&&r<75)bull+=8;else if(r<35)bull+=3;if(mom>0)bull+=16;if(vr>=1.2)bull+=10;if(cur>support*1.01)bull+=4;bull=Math.max(0,Math.min(100,Math.round(bull)));let bear=100-bull;let risk=30;if(a)risk+=Math.min(32,(a/cur)*100*6);if(r>75||r<25)risk+=12;if(vr>2)risk+=8;risk=Math.max(5,Math.min(95,Math.round(risk)));let setup='NEUTRAL';if(bull>=72&&risk<70)setup='BULLISH_SETUP';else if(bear>=72&&risk<70)setup='BEARISH_SETUP';const long={entry:cur,stop:a?cur-a*1.5:null,tp1:a?cur+a*1.5:null,tp2:a?cur+a*3:null};const short={entry:cur,stop:a?cur+a*1.5:null,tp1:a?cur-a*1.5:null,tp2:a?cur-a*3:null};return{price:cur,rsi:r,ema20:e20,ema50:e50,ema200:e200,atr:a,momentum:mom,volumeRatio:vr,support,resistance,bullScore:bull,bearScore:bear,riskScore:risk,setup,tradeLevels:{long,short}};}
 async function geckoSnapshot(symbol){const ids={BTC:'bitcoin',ETH:'ethereum',SOL:'solana',BNB:'binancecoin',XRP:'ripple',DOGE:'dogecoin',ADA:'cardano',AVAX:'avalanche-2',LINK:'chainlink',DOT:'polkadot',LTC:'litecoin',TRX:'tron'};const id=ids[symbol];if(!id)throw new Error('gecko');const u=`https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true`;const r=await fetch(u,{headers:{accept:'application/json'},signal:AbortSignal.timeout(8000)});if(!r.ok)throw new Error('gecko');const d=(await r.json())[id];if(!d?.usd)throw new Error('gecko');return{price:d.usd,change24h:d.usd_24h_change??null,volume24h:d.usd_24h_vol??null};}
-async function getAnalysis(pair,tf){const key=pair+tf,now=Date.now(),c=cache.get(key);if(c&&now-c.t<1000)return c.v;try{const raw=await binanceKlines(pair,tf,250);const rows=raw.map(x=>({t:x[0],o:+x[1],h:+x[2],l:+x[3],c:+x[4],v:+x[5]}));const v={symbol:symbols[pair],pair,tf,provider:'binance',updatedAt:new Date().toISOString(),candles:rows.map(x=>[x.t,x.o,x.h,x.l,x.c,x.v]),analysis:analyze(rows)};cache.set(key,{t:now,v});return v;}catch{try{const raw=await coinbaseKlines(pair,tf,250);const rows=raw.map(x=>({t:x[0],o:+x[1],h:+x[2],l:+x[3],c:+x[4],v:+x[5]}));const v={symbol:symbols[pair],pair,tf,provider:'coinbase',updatedAt:new Date().toISOString(),candles:rows.map(x=>[x.t,x.o,x.h,x.l,x.c,x.v]),analysis:analyze(rows)};cache.set(key,{t:now,v});return v;}catch{try{const raw=await krakenKlines(pair,tf,250);const rows=raw.map(x=>({t:x[0],o:+x[1],h:+x[2],l:+x[3],c:+x[4],v:+x[5]}));const v={symbol:symbols[pair],pair,tf,provider:'kraken',updatedAt:new Date().toISOString(),candles:rows.map(x=>[x.t,x.o,x.h,x.l,x.c,x.v]),analysis:analyze(rows)};cache.set(key,{t:now,v});return v;}catch{const s=await geckoSnapshot(symbols[pair]);const v={symbol:symbols[pair],pair,tf,provider:'coingecko_snapshot',updatedAt:new Date().toISOString(),candles:[],analysis:{price:s.price,rsi:null,ema20:null,ema50:null,ema200:null,atr:null,momentum:(s.change24h??0)/100,volumeRatio:null,support:null,resistance:null,bullScore:s.change24h>0?60:40,bearScore:s.change24h<0?60:40,riskScore:50,setup:'SNAPSHOT_ONLY',tradeLevels:{long:null,short:null}}};cache.set(key,{t:now,v});return v;}}}
+async function getAnalysis(pair,tf){
+  const key=pair+tf,now=Date.now(),c=cache.get(key);
+  if(c&&now-c.t<1000)return c.v;
+  const providers=[
+    ['binance',()=>binanceKlines(pair,tf,250)],
+    ['coinbase',()=>coinbaseKlines(pair,tf,250)],
+    ['kraken',()=>krakenKlines(pair,tf,250)]
+  ];
+  for(const [provider,load] of providers){
+    try{
+      const raw=await load();
+      const rows=raw.map(x=>({t:+x[0],o:+x[1],h:+x[2],l:+x[3],c:+x[4],v:+x[5]}));
+      if(!rows.length)throw new Error(provider+'_empty');
+      const v={symbol:symbols[pair],pair,tf,provider,updatedAt:new Date().toISOString(),candles:rows.map(x=>[x.t,x.o,x.h,x.l,x.c,x.v]),analysis:analyze(rows)};
+      cache.set(key,{t:now,v});
+      return v;
+    }catch{}
+  }
+  try{
+    const s=await geckoSnapshot(symbols[pair]);
+    const change=Number(s.change24h||0);
+    const v={symbol:symbols[pair],pair,tf,provider:'coingecko_snapshot',updatedAt:new Date().toISOString(),candles:[],analysis:{
+      price:s.price,rsi:null,ema20:null,ema50:null,ema200:null,atr:null,
+      momentum:change/100,volumeRatio:null,support:null,resistance:null,
+      bullScore:change>0?60:40,bearScore:change<0?60:40,riskScore:50,
+      setup:'SNAPSHOT_ONLY',tradeLevels:{long:null,short:null}
+    }};
+    cache.set(key,{t:now,v});
+    return v;
+  }catch{
+    throw new Error('market_unavailable');
+  }
+}
 app.post('/api/ai-memory/snapshot',optionalAuth,async(req,res)=>{try{const symbol=String(req.body?.symbol||'').toUpperCase(),tf=String(req.body?.tf||'1h');if(!tfMap[tf])return res.status(400).json({error:'unsupported_tf'});await refreshMarketUniverse();if(!symbols[symbol])return res.status(400).json({error:'unsupported_market'});const j=await getAnalysis(symbol,tf),a=j.analysis,bias=aiMemoryBias(a);const nowCut=new Date(Date.now()-30*60*1000).toISOString();const recent=db.prepare("SELECT id FROM ai_predictions WHERE symbol=? AND tf=? AND created_at>=? ORDER BY created_at DESC LIMIT 1").get(symbol,tf,nowCut);if(!recent){const levels=bias==='SHORT'?a.tradeLevels?.short:a.tradeLevels?.long;db.prepare('INSERT INTO ai_predictions(user_id,symbol,tf,bias,entry,stop,tp1,tp2,source) VALUES(?,?,?,?,?,?,?,?,?)').run(req.user?.id||null,symbol,tf,bias,levels?.entry??a.price,levels?.stop??null,levels?.tp1??null,levels?.tp2??null,'live');}res.json({ok:true,summary:aiMemorySummary(symbol,tf)});}catch{res.status(503).json({error:'ai_memory_unavailable'});}});
 app.get('/api/ai-memory/summary',optionalAuth,async(req,res)=>{try{const symbol=String(req.query.symbol||'').toUpperCase(),tf=String(req.query.tf||'1h');if(!tfMap[tf]||!symbols[symbol])return res.status(400).json({error:'invalid_market'});const j=await getAnalysis(symbol,tf);const rows=db.prepare("SELECT * FROM ai_predictions WHERE symbol=? AND tf=? ORDER BY created_at DESC LIMIT 30").all(symbol,tf);aiMemoryEvaluate(rows,j.analysis?.price);const summary=aiMemorySummary(symbol,tf);if(req.user?.plan==='premium')return res.json({ok:true,premium:true,summary,history:db.prepare("SELECT id,symbol,tf,bias,entry,stop,tp1,tp2,created_at,resolved_at,status,outcome FROM ai_predictions WHERE symbol=? AND tf=? ORDER BY created_at DESC LIMIT 30").all(symbol,tf)});return res.json({ok:true,premium:false,summary:{total:summary.total,resolved:summary.resolved,wins:summary.wins,accuracy:summary.accuracy,pending:summary.pending,last:summary.last?{bias:summary.last.bias,created_at:summary.last.created_at,status:summary.last.status}:null}});}catch{res.status(503).json({error:'ai_memory_unavailable'});}});
 app.get('/api/ai-memory/history',auth,premium,async(req,res)=>{try{const symbol=String(req.query.symbol||'').toUpperCase(),tf=String(req.query.tf||'1h');const rows=db.prepare("SELECT id,symbol,tf,bias,entry,stop,tp1,tp2,created_at,resolved_at,status,outcome FROM ai_predictions WHERE symbol=? AND tf=? ORDER BY created_at DESC LIMIT 30").all(symbol,tf);res.json({ok:true,history:rows});}catch{res.status(503).json({error:'ai_memory_unavailable'});}});
