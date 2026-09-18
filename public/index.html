@@ -44,8 +44,9 @@ function openChart(symbol){location.href=`/crypto-chart.html?symbol=${encodeURIC
 function setLive(ok,txt){document.getElementById('liveText').textContent=txt;document.querySelector('.led').style.background=ok?'var(--green)':'var(--red)';document.querySelector('.led').style.boxShadow=ok?'0 0 13px var(--green)':'0 0 13px var(--red)'}
 async function load(){
  try{
-  const coins=await api('/api/coins');const pairs=(coins.coins||[]).map(x=>x.pair).filter(Boolean);
-  const livePairs=pairs.slice(0,120);const data=(await Promise.all(livePairs.map(p=>api('/api/market/'+p+'?tf=15m').catch(()=>null)))).filter(Boolean).map(norm);rows=data;
+  const coins=await api('/api/coins');const universe=coins.coins||[];const pairs=universe.filter(x=>x.chartable).map(x=>x.pair).filter(Boolean);
+  const livePairs=pairs.slice(0,120);const live=(await Promise.all(livePairs.map(p=>api('/api/market/'+p+'?tf=15m').catch(()=>null)))).filter(Boolean).map(norm);const liveByPair=new Map(live.map(x=>[x.pair,x]));
+  const data=universe.map(x=>{const l=liveByPair.get(x.pair);return l?{...x,...l}:x});rows=data;
   document.getElementById('coins').innerHTML=data.slice(0,12).map(coinCard).join('')||'<div class="panel">No market data returned.</div>';
   document.getElementById('marketList').innerHTML=data.map(coinCard).join('');document.getElementById('marketCount')?.replaceChildren(document.createTextNode((coins.count||data.length)+' assets'));
   const s=await api('/api/market-status');const online=s.markets?.filter(x=>x.online).length||0;setLive(online>0,online>0?'LIVE':'OFFLINE');
