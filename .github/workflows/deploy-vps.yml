@@ -1,0 +1,54 @@
+name: Deploy CryptoPilot to VPS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: cryptopilot-production
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify release
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npm run check
+
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || '22' }}
+          script_stop: true
+          script: |
+            set -e
+            mkdir -p /opt/cryptopilot
+            cd /opt/cryptopilot
+            if [ ! -d .git ]; then
+              git clone https://github.com/babakbit2022-maker/CryptoPilot.git .
+            else
+              git fetch origin main
+              git reset --hard origin/main
+              git clean -fd
+            fi
+            npm install --omit=dev --no-audit --no-fund
+            npm install -g pm2
+            pm2 startOrRestart ecosystem.config.cjs --env production
+            pm2 save
+            curl --fail --silent --show-error --max-time 20 http://127.0.0.1:3000/api/health
