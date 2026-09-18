@@ -73,7 +73,7 @@ async function refreshMarketUniverse(){
       seen.add(pair);
       symbols[pair]=symbol;
       symbolMeta.set(pair,{symbol,coingeckoId:c.id,marketCap:c.market_cap||0,marketCapRank:c.market_cap_rank||null,name:c.name||symbol,image:c.image||null});
-      v.push({pair,symbol,name:c.name||symbol,marketCap:c.market_cap||0,marketCapRank:c.market_cap_rank||null,image:c.image||null,change24h:c.price_change_percentage_24h??null});
+      v.push({pair,symbol,name:c.name||symbol,marketCap:c.market_cap||0,marketCapRank:c.market_cap_rank||null,image:c.image||null,change24h:c.price_change_percentage_24h??null,price:c.current_price??null,volume24h:c.total_volume??null,chartable:tradable.has(pair)});
     }
     // Keep the top-500 CoinGecko market-cap universe; only live Binance USDT pairs are chartable.
     cache.set('__universe',{t:now,v});
