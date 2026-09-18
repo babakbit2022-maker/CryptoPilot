@@ -35,7 +35,7 @@ jobs:
         id: monitor
         continue-on-error: true
         env:
-          CRYPTOPILOT_URL: ${{ vars.CRYPTOPILOT_URL || 'https://waterspout-pretty-rhinoceros.abasthan.app' }}
+          CRYPTOPILOT_URL: ${{ vars.CRYPTOPILOT_URL || 'http://87.107.190.74' }}
         run: node scripts/ceo-monitor.mjs | tee ceo-production.json
       - name: Safe auto-repair
         id: repair
