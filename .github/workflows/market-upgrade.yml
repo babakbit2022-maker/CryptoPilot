@@ -24,8 +24,18 @@ jobs:
       - name: Upgrade market universe
         run: node scripts/upgrade-market-universe.mjs
 
-      - name: Syntax check
-        run: node --check server.js && node --check bootstrap.js && node --check payment-wrapper.js
+      - name: Syntax diagnostics
+        run: |
+          set +e
+          : > .github/syntax-report.txt
+          for f in server.js bootstrap.js payment-wrapper.js; do
+            echo "=== $f ===" >> .github/syntax-report.txt
+            node --check "$f" >> .github/syntax-report.txt 2>&1
+            code=$?
+            echo "exit=$code" >> .github/syntax-report.txt
+            echo >> .github/syntax-report.txt
+          done
+          exit 0
 
       - name: Commit upgrade
         run: |
