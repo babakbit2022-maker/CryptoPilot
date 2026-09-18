@@ -24,24 +24,14 @@ jobs:
       - name: Upgrade market universe
         run: node scripts/upgrade-market-universe.mjs
 
-      - name: Syntax diagnostics
-        run: |
-          set +e
-          : > .github/syntax-report.txt
-          for f in server.js bootstrap.js payment-wrapper.js; do
-            echo "=== $f ===" >> .github/syntax-report.txt
-            node --check "$f" >> .github/syntax-report.txt 2>&1
-            code=$?
-            echo "exit=$code" >> .github/syntax-report.txt
-            echo >> .github/syntax-report.txt
-          done
-          exit 0
+      - name: Syntax check
+        run: node --check server.js && node --check bootstrap.js && node --check payment-wrapper.js
 
       - name: Commit upgrade
         run: |
           git config user.name 'CryptoPilot Agent'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add server.js package.json public/index.html scripts/upgrade-market-universe.mjs .github/syntax-report.txt
+          git add server.js package.json public/index.html scripts/upgrade-market-universe.mjs
           if git diff --cached --quiet; then
             echo 'No changes to commit.'
           else
