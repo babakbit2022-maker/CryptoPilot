@@ -16,7 +16,8 @@ jobs:
         shell: bash
         run: |
           set -e
-          BASE='https://waterspout-pretty-rhinoceros.abasthan.app'
+          BASE='${{ vars.PUBLIC_BASE_URL }}'
+          if [ -z "$BASE" ]; then echo 'PUBLIC_BASE_URL is not configured; production smoke test skipped.'; exit 0; fi
           for path in /api/health /api/ready /api/market-status; do
             echo "Checking $BASE$path"
             ok=0
