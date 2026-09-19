@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - name: Test and safely repair VPS runtime
+      - name: Snapshot, test and safely repair VPS runtime
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -28,9 +28,18 @@ jobs:
             echo "=== CRYPTOPILOT NIGHT GUARDIAN ==="
             date -u
 
-            # Safe runtime repair only: never edit application source, UI, or payment configuration.
+            # Mandatory recovery point before every run.
+            SNAP="/opt/cryptopilot/snapshots/guardian-$(date -u +%Y%m%d-%H%M%S)"
+            mkdir -p "$SNAP"
+            cp -a server.js "$SNAP/server.js"
+            cp -a public/index.html "$SNAP/index.html"
+            [ -f package.json ] && cp -a package.json "$SNAP/package.json" || true
+            printf '%s\n' "$SNAP" > /opt/cryptopilot/LAST_GUARDIAN_SNAPSHOT
+            echo "SNAPSHOT=$SNAP"
+
+            # Hard scope: runtime/data recovery only.
+            # Never modify UI/design or payment/wallet configuration.
             if ! pm2 describe cryptopilot >/dev/null 2>&1; then
-              echo "PM2 process missing; starting existing ecosystem/app configuration."
               pm2 start cryptopilot || pm2 restart cryptopilot
             fi
 
@@ -38,7 +47,6 @@ jobs:
             echo "PM2_STATUS=$pm2_status"
 
             if [ "$pm2_status" != "online" ]; then
-              echo "PM2 is not online; restarting existing process."
               pm2 restart cryptopilot --update-env
               sleep 3
             fi
@@ -58,7 +66,6 @@ jobs:
             check_api whale-intelligence || true
 
             if [ "$api_ok" -eq 0 ]; then
-              echo "Core API check failed; restarting existing app process."
               pm2 restart cryptopilot --update-env
               sleep 4
               check_api coins || exit 1
@@ -68,7 +75,10 @@ jobs:
 
             home_code=$(curl -sS -o /tmp/guardian-home.html -w "%{http_code}" --max-time 20 http://127.0.0.1/ || true)
             echo "PORT80_HOME_HTTP=$home_code"
-            [ "$home_code" = "200" ] || { echo "Port 80 failed; restarting nginx."; systemctl restart nginx; sleep 2; }
+            if [ "$home_code" != "200" ]; then
+              systemctl restart nginx
+              sleep 2
+            fi
 
             home_code=$(curl -sS -o /tmp/guardian-home.html -w "%{http_code}" --max-time 20 http://127.0.0.1/ || true)
             echo "PORT80_HOME_HTTP_AFTER_REPAIR=$home_code"
@@ -76,11 +86,6 @@ jobs:
 
             grep -q "const api=async" /tmp/guardian-home.html
             grep -q "document.getElementById('marketList').innerHTML" /tmp/guardian-home.html
-
-            python3 - <<'PY'
-            import json
-            d=json.load(open('/tmp/guardian.json')) if False else {}
-            PY
 
             pm2 save >/dev/null 2>&1 || true
             echo "NIGHT GUARDIAN: PASS"
