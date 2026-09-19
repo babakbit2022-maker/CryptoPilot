@@ -8,6 +8,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import Database from 'better-sqlite3';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 
 // CryptoPilot AI technical release. Full release archive is maintained in project Library.
 const app = express();
@@ -73,6 +74,14 @@ const symbols={BTCUSDT:'BTC',ETHUSDT:'ETH',SOLUSDT:'SOL',BNBUSDT:'BNB',XRPUSDT:'
 const symbolMeta=new Map(Object.entries(symbols).map(([pair,symbol])=>[pair,{symbol,coingeckoId:null}]));
 const tfMap={'1m':1,'15m':15,'1h':60,'4h':240,'1d':1440};
 const cache=new Map();
+const MARKET_CACHE_FILE=process.env.MARKET_CACHE_FILE || 'market-universe-cache.json';
+try{
+  const persisted=JSON.parse(fs.readFileSync(MARKET_CACHE_FILE,'utf8'));
+  if(Array.isArray(persisted?.v)&&persisted.v.length>=100)cache.set('__universe',persisted);
+}catch{}
+function persistUniverse(v,t=Date.now()){
+  try{fs.writeFileSync(MARKET_CACHE_FILE,JSON.stringify({t,v}),'utf8');}catch{}
+}
 let universeInflight=null;
 async function refreshMarketUniverse(){
   const now=Date.now();
@@ -103,6 +112,7 @@ async function refreshMarketUniverse(){
     }
     // Keep the top-500 CoinGecko market-cap universe; only live Binance USDT pairs are chartable.
     cache.set('__universe',{t:now,v});
+    persistUniverse(v,now);
     return v;
   }catch{
     const previous=cache.get('__universe')?.v;
