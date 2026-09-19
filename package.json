@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "start": "node bootstrap.js",
     "check": "node --check server.js && node --check bootstrap.js"
   },
   "dependencies": {
