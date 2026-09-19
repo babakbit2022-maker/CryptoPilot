@@ -115,7 +115,13 @@ jobs:
         run: |
           set -e
           echo "Checking public VPS endpoint"
+          echo "VPS_HOST resolves to:"
+          getent ahostsv4 "$VPS_HOST" | awk '{print $1}' | sort -u || true
           curl --fail --silent --show-error --max-time 20 "http://$VPS_HOST/api/health"
           echo
           curl --fail --silent --show-error --max-time 20 "http://$VPS_HOST/" | grep -q "growthViewport"
-          echo "Public endpoint is serving the latest moving Highest Growth ticker."
+          echo "Checking direct public IP 31.171.101.88"
+          curl --fail --silent --show-error --max-time 20 "http://31.171.101.88/api/health"
+          echo
+          curl --fail --silent --show-error --max-time 20 "http://31.171.101.88/" | grep -q "growthViewport"
+          echo "Public endpoint and direct IP are serving the latest moving Highest Growth ticker."
