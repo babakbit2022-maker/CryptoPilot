@@ -117,11 +117,10 @@ jobs:
           echo "Checking public VPS endpoint"
           echo "VPS_HOST resolves to:"
           getent ahostsv4 "$VPS_HOST" | awk '{print $1}' | sort -u || true
+          echo "VPS_HOST remote address:"
+          curl --fail --silent --show-error --max-time 20 -o /dev/null -w '%{remote_ip} %{http_code}\n' "http://$VPS_HOST/api/health"
+          echo "VPS_HOST health:"
           curl --fail --silent --show-error --max-time 20 "http://$VPS_HOST/api/health"
           echo
           curl --fail --silent --show-error --max-time 20 "http://$VPS_HOST/" | grep -q "growthViewport"
-          echo "Checking current VPS public IP 31.171.101.69"
-          curl --fail --silent --show-error --max-time 20 "http://31.171.101.69/api/health"
-          echo
-          curl --fail --silent --show-error --max-time 20 "http://31.171.101.69/" | grep -q "growthViewport"
-          echo "Public endpoint and current VPS public IP are serving the latest moving Highest Growth ticker."
+          echo "Public endpoint is the canonical production address; direct IP probing is disabled because the VPS may sit behind NAT/proxy."
