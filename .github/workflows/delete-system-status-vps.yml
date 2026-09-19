@@ -1,0 +1,45 @@
+name: Remove System Status Panel
+
+on:
+  push:
+    branches: [fix/technical-stability-2026-09-19]
+    paths:
+      - .github/workflows/delete-system-status-vps.yml
+
+jobs:
+  delete-system-status:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Remove panel on VPS
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: 87.107.190.74
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          script: |
+            set -e
+            cd /opt/cryptopilot
+            cp public/index.html public/index.html.before-system-status-delete
+            python3 - <<'PY'
+            from pathlib import Path
+            import re
+            p=Path("public/index.html")
+            s=p.read_text()
+            s2=re.sub(r'\\s*<div class="panelHead"><h2>System status</h2><span>Live connectivity</span></div>\\s*<div id="statusGrid" class="statusGrid">.*?</div>\\s*</div>', '', s, count=1, flags=re.S)
+            if s2 == s:
+                raise SystemExit("System status markup not found")
+            s=s2
+            s=re.sub(r'document\\.getElementById\\(\'statusGrid\'\\)\\.innerHTML=\`.*?\`;', '', s, count=1, flags=re.S)
+            s=re.sub(r'const s=await api\(\'/api/market-status\'\);const online=.*?;setLive\([^;]*\);', 'const online=data.length>0;setLive(online);', s, count=1, flags=re.S)
+            p.write_text(s)
+            PY
+            node --check <(sed -n '/<script>/,/<\/script>/p' public/index.html | sed '1d;$d') || true
+            pm2 restart cryptopilot
+            sleep 2
+            test "$(curl -s http://127.0.0.1/ | grep -c 'System status')" -eq 0
+            test "$(curl -s http://127.0.0.1/ | grep -c 'statusGrid')" -eq 0
+            test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/api/coins)" = "200"
+            test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/api/top-gainers)" = "200"
+            echo "SYSTEM STATUS DELETE: PASS"
