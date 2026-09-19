@@ -1,0 +1,35 @@
+name: Refresh live data on VPS
+on:
+  push:
+    branches: [fix/technical-stability-2026-09-19]
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          script: |
+            set -e
+            cd /opt/cryptopilot
+            pm2 restart cryptopilot --update-env
+            sleep 6
+            test "$(curl -sS -o /tmp/coins -w '%{http_code}' http://127.0.0.1:3000/api/coins)" = 200
+            test "$(curl -sS -o /tmp/stats -w '%{http_code}' http://127.0.0.1:3000/api/market-stats)" = 200
+            test "$(curl -sS -o /tmp/gainers -w '%{http_code}' http://127.0.0.1:3000/api/top-gainers)" = 200
+            python3 - <<'PY'
+            import json
+            c=json.load(open('/tmp/coins'))
+            g=json.load(open('/tmp/gainers'))
+            coins=c if isinstance(c,list) else c.get('coins',[])
+            gainers=g.get('gainers',[])
+            assert len(coins)>100
+            assert len(gainers)>0
+            print('LIVE_COINS=',len(coins))
+            print('LIVE_GAINERS=',len(gainers))
+            print('LIVE_REFRESH: PASS')
+            PY
