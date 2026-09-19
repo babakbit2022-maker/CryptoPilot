@@ -138,7 +138,10 @@ function loadPumpCandidates(){
 
 async function loadDailyIntelligence(){
  try{
-  const [p,s,g]=await Promise.all([api('/api/daily-picks'),api('/api/scanner?tf=1h'),api('/api/top-gainers')]);
+  const results=await Promise.allSettled([api('/api/daily-picks'),api('/api/scanner?tf=1h'),api('/api/top-gainers')]);
+  const p=results[0].status==='fulfilled'?results[0].value:{};
+  const s=results[1].status==='fulfilled'?results[1].value:{};
+  const g=results[2].status==='fulfilled'?results[2].value:{};
   const picks=p.picks||[],rs=s.results||[];
   const avg=rs.length?Math.round(rs.slice(0,80).reduce((a,x)=>a+Number(x.riskScore||50),0)/Math.min(80,rs.length)):50;
   const breadth=rs.length?Math.round(rs.slice(0,80).filter(x=>Number(x.momentum||0)>0).length/Math.min(80,rs.length)*100):50;
@@ -170,7 +173,7 @@ async function loadDailyIntelligence(){
     perfValue.className='perfValue';
     perfMeta.textContent='No completed daily history yet — tracking starts with the first recorded daily picks.';
   }
-  document.getElementById('picksUpdated').textContent='Updated '+new Date(p.updatedAt).toLocaleTimeString();
+  document.getElementById('picksUpdated').textContent=p.updatedAt?'Updated '+new Date(p.updatedAt).toLocaleTimeString():'Updated from available live sources';
  }catch{
   document.getElementById('dailyPicks').innerHTML='<div class="pick">Daily intelligence is temporarily unavailable.</div>';
   document.getElementById('perfMeta').textContent='Historical performance is temporarily unavailable.';
