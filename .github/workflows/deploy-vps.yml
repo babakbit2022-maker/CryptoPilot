@@ -92,6 +92,10 @@ jobs:
             curl --fail --silent --show-error --max-time 20 http://127.0.0.1:3000/api/health
             curl --fail --silent --show-error --max-time 20 http://127.0.0.1/api/health
 
+      - name: Deep production smoke test
+        env:
+          BASE_URL: http://87.107.190.74
+        run: node .github/production-smoke.mjs
       - name: Verify the actual production site
         env:
           DEPLOY_SHA: ${{ github.sha }}
