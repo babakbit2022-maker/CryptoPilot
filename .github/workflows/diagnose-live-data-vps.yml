@@ -1,5 +1,7 @@
 name: Diagnose live data on VPS
 on:
+  push:
+    branches: [fix/technical-stability-2026-09-19]
   workflow_dispatch:
 jobs:
   diagnose:
