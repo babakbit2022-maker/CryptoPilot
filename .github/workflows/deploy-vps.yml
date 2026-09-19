@@ -2,7 +2,7 @@ name: Deploy CryptoPilot to the production site IP
 
 on:
   push:
-    branches: [main]
+    branches: [main, appdeploy-vps-transfer-20260919]
   workflow_dispatch:
 
 concurrency:
@@ -50,7 +50,6 @@ jobs:
             git remote set-url origin https://github.com/babakbit2022-maker/CryptoPilot.git
             git fetch --prune origin "$DEPLOY_SHA"
             git reset --hard "$DEPLOY_SHA"
-            git clean -fd
             test "$(git rev-parse HEAD)" = "$DEPLOY_SHA"
             echo "DEPLOYED_SHA:"
             git rev-parse HEAD
