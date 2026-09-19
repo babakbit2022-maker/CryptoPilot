@@ -78,7 +78,7 @@ async function refreshMarketUniverse(){
     const cg=await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=500&page=1&sparkline=false&price_change_percentage=24h',{headers:{accept:'application/json'},signal:AbortSignal.timeout(10000)});
     if(!cg.ok)throw new Error('coingecko universe');
     const market=await cg.json();
-    const binanceUrls=['https://api.binance.com/api/v3/exchangeInfo','https://api1.binance.com/api/v3/exchangeInfo'];
+    const binanceUrls=['https://data-api.binance.vision/api/v3/exchangeInfo','https://api-gcp.binance.com/api/v3/exchangeInfo','https://api.binance.com/api/v3/exchangeInfo','https://api1.binance.com/api/v3/exchangeInfo','https://api2.binance.com/api/v3/exchangeInfo','https://api3.binance.com/api/v3/exchangeInfo','https://api4.binance.com/api/v3/exchangeInfo'];
     let info=null;
     for(const u of binanceUrls){try{const r=await fetch(u,{headers:{accept:'application/json'},signal:AbortSignal.timeout(7000)});if(r.ok){info=await r.json();break;}}catch{}}
     const tradable=new Set((info?.symbols||[]).filter(x=>x.status==='TRADING'&&x.quoteAsset==='USDT'&&x.isSpotTradingAllowed!==false).map(x=>x.symbol));
@@ -89,11 +89,11 @@ async function refreshMarketUniverse(){
       const pair=symbol+'USDT';
       if(seen.has(pair))continue;
       seen.add(pair);
-      const chartable=tradable.has(pair);
-      if(chartable){
-        symbols[pair]=symbol;
-        symbolMeta.set(pair,{symbol,coingeckoId:c.id,marketCap:c.market_cap||0,marketCapRank:c.market_cap_rank||null,name:c.name||symbol,image:c.image||null});
-      }
+      // Register every CoinGecko asset so the dashboard can open its market endpoint.
+      // Chart availability is resolved on-demand through Binance market-data fallbacks.
+      symbols[pair]=symbol;
+      symbolMeta.set(pair,{symbol,coingeckoId:c.id,marketCap:c.market_cap||0,marketCapRank:c.market_cap_rank||null,name:c.name||symbol,image:c.image||null});
+      const chartable=tradable.size ? tradable.has(pair) : true;
       v.push({pair,symbol,name:c.name||symbol,marketCap:c.market_cap||0,marketCapRank:c.market_cap_rank||null,image:c.image||null,change24h:c.price_change_percentage_24h??null,price:c.current_price??null,volume24h:c.total_volume??null,chartable});
     }
     // Keep the top-500 CoinGecko market-cap universe; only live Binance USDT pairs are chartable.
@@ -106,7 +106,7 @@ async function refreshMarketUniverse(){
   }
 }
 
-async function binanceKlines(symbol,interval,limit=250){const configured=(process.env.MARKET_BASE_URL||'').replace(/\/$/,'');const bases=[configured,'https://api.binance.com','https://api1.binance.com','https://api2.binance.com','https://api3.binance.com'].filter((v,i,a)=>v&&!a.slice(0,i).includes(v));let last=null;for(const base of bases){try{const u=`${base}/api/v3/klines?symbol=${encodeURIComponent(symbol)}&interval=${interval}&limit=${limit}`;const r=await fetch(u,{headers:{accept:'application/json'},signal:AbortSignal.timeout(8000)});if(r.ok){const data=await r.json();if(Array.isArray(data)&&data.length)return data;}last=new Error('binance');}catch(e){last=e;}}throw last||new Error('binance');}
+async function binanceKlines(symbol,interval,limit=250){const configured=(process.env.MARKET_BASE_URL||'').replace(/\/$/,'');const bases=[configured,'https://data-api.binance.vision','https://api-gcp.binance.com','https://api.binance.com','https://api1.binance.com','https://api2.binance.com','https://api3.binance.com','https://api4.binance.com'].filter((v,i,a)=>v&&!a.slice(0,i).includes(v));let last=null;for(const base of bases){try{const u=`${base}/api/v3/klines?symbol=${encodeURIComponent(symbol)}&interval=${interval}&limit=${limit}`;const r=await fetch(u,{headers:{accept:'application/json'},signal:AbortSignal.timeout(8000)});if(r.ok){const data=await r.json();if(Array.isArray(data)&&data.length)return data;}last=new Error('binance');}catch(e){last=e;}}throw last||new Error('binance');}
 function providerInterval(tf){return {'1m':60,'15m':900,'1h':3600,'4h':21600,'1d':86400}[tf]||900;}
 async function coinbaseKlines(symbol,tf,limit=250){const base=symbol.replace(/USDT$/,'')+'-USD';const g=providerInterval(tf);const end=Math.floor(Date.now()/1000),start=end-g*limit;const u=`https://api.exchange.coinbase.com/products/${encodeURIComponent(base)}/candles?granularity=${g}&start=${new Date(start*1000).toISOString()}&end=${new Date(end*1000).toISOString()}`;const r=await fetch(u,{headers:{accept:'application/json'},signal:AbortSignal.timeout(8000)});if(!r.ok)throw new Error('coinbase');const data=await r.json();if(!Array.isArray(data)||!data.length)throw new Error('coinbase');return data.reverse().map(x=>[Number(x[0])*1000,Number(x[3]),Number(x[2]),Number(x[1]),Number(x[4]),Number(x[5])]);}
 async function krakenKlines(symbol,tf,limit=250){const map={BTCUSDT:'XBTUSD',ETHUSDT:'ETHUSD',SOLUSDT:'SOLUSD',XRPUSDT:'XRPUSD',DOGEUSDT:'DOGEUSD',ADAUSDT:'ADAUSD',AVAXUSDT:'AVAXUSD',LINKUSDT:'LINKUSD',DOTUSDT:'DOTUSD',LTCUSDT:'LTCUSD',TRXUSDT:'TRXUSD'};const pair=map[symbol]||symbol.replace(/USDT$/,'')+'USD';const interval={'1m':1,'15m':15,'1h':60,'4h':240,'1d':1440}[tf]||15;const u=`https://api.kraken.com/0/public/OHLC?pair=${encodeURIComponent(pair)}&interval=${interval}`;const r=await fetch(u,{headers:{accept:'application/json'},signal:AbortSignal.timeout(8000)});if(!r.ok)throw new Error('kraken');const j=await r.json();const key=Object.keys(j.result||{}).find(k=>k!=='last');const data=key?j.result[key]:[];if(!data.length)throw new Error('kraken');return data.slice(-limit).map(x=>[Number(x[0])*1000,Number(x[1]),Number(x[2]),Number(x[3]),Number(x[4]),Number(x[6])]);}
