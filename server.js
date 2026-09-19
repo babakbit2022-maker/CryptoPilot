@@ -169,8 +169,8 @@ app.get('/api/whale-intelligence',async(req,res)=>{try{
   const now=new Date().toISOString();
   const out=[];
   const up=db.prepare('INSERT INTO whale_snapshots(symbol,price,volume24h,change24h,market_cap,captured_at) VALUES(?,?,?,?,?,?) ON CONFLICT(symbol) DO UPDATE SET price=excluded.price,volume24h=excluded.volume24h,change24h=excluded.change24h,market_cap=excluded.market_cap,captured_at=excluded.captured_at');
-  const get=db.prepare('SELECT * FROM whale_snapshots WHERE symbol=?').get;
-  const update= db.transaction((items)=>{for(const x of items){const prev=get.call(db,x.symbol);const sig=whaleSignal(x,prev);out.push(sig);up.run(x.symbol,x.price,x.volume24h,x.change24h,x.marketCap,now);}});
+  const get=db.prepare('SELECT * FROM whale_snapshots WHERE symbol=?');
+  const update= db.transaction((items)=>{for(const x of items){const prev=get.get(x.symbol);const sig=whaleSignal(x,prev);out.push(sig);up.run(x.symbol,x.price,x.volume24h,x.change24h,x.marketCap,now);}});
   update(all.filter(x=>x.price!=null&&x.volume24h!=null));
   out.sort((a,b)=>b.score-a.score);
   const active=out.filter(x=>x.direction!=='NEUTRAL').slice(0,12);
