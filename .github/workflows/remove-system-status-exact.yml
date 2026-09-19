@@ -1,0 +1,52 @@
+name: Remove System Status Exact
+on:
+  push:
+    branches: [fix/technical-stability-2026-09-19]
+jobs:
+  remove:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          script: |
+            set -e
+            cd /opt/cryptopilot
+            cp public/index.html public/index.html.before-system-status-exact
+            python3 - <<'PY'
+            from pathlib import Path
+            import re
+            p=Path('public/index.html')
+            s=p.read_text()
+            pat=r'<aside[^>]*>\s*<div class="panelHead">\s*<h2>System status</h2>.*?</aside>'
+            s2,n=re.subn(pat,'',s,count=1,flags=re.S)
+            if n != 1: raise SystemExit(f'SYSTEM_STATUS_BLOCK_NOT_FOUND:{n}')
+            pat2=r'document\.getElementById\(\x27statusGrid\x27\)\.innerHTML=.{0,20000}?;'
+            s2,n2=re.subn(pat2,'',s2,count=1,flags=re.S)
+            if n2 != 1: raise SystemExit(f'STATUSGRID_JS_NOT_FOUND:{n2}')
+            p.write_text(s2)
+            print('REMOVED_BLOCK=',n,'REMOVED_JS=',n2)
+            PY
+            ! grep -q 'System status' public/index.html
+            ! grep -q 'statusGrid' public/index.html
+            python3 - <<'PY'
+            from pathlib import Path
+            import re
+            s=Path('public/index.html').read_text()
+            m=re.search(r'<script>(.*?)</script>',s,re.S)
+            if not m: raise SystemExit('NO_INLINE_SCRIPT')
+            Path('/tmp/inline.js').write_text(m.group(1))
+            PY
+            node --check /tmp/inline.js
+            pm2 restart cryptopilot
+            sleep 5
+            test "$(curl -sS -o /tmp/home -w '%{http_code}' http://127.0.0.1:3000/)" = 200
+            test "$(curl -sS -o /tmp/coins -w '%{http_code}' http://127.0.0.1:3000/api/coins)" = 200
+            test "$(curl -sS -o /tmp/gainers -w '%{http_code}' http://127.0.0.1:3000/api/top-gainers)" = 200
+            ! grep -q 'System status' /tmp/home
+            ! grep -q 'statusGrid' /tmp/home
+            echo 'SYSTEM STATUS EXACT DELETE: PASS'
