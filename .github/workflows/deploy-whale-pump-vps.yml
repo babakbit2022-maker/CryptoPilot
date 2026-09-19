@@ -49,7 +49,8 @@ jobs:
                 s=src.find("function whaleSignal(")
                 e=src.find("\napp.get('/api/whale-intelligence'",s)
                 if s<0 or e<0: raise SystemExit("whaleSignal source missing")
-                cur=cur[:cur.find("\napp.get(",cur.find("app.get('/api/coins'"))] + src[s:e] + cur[cur.find("\napp.get(",cur.find("app.get('/api/coins'"))):]
+                anchor_pos=cur.find("\napp.get(",cur.find("app.get('/api/coins'")))
+    cur=cur[:anchor_pos] + "\n" + src[s:e] + cur[anchor_pos:]
 
             if "app.get('/api/whale-intelligence'" not in cur:
                 s=src.find("app.get('/api/whale-intelligence'")
