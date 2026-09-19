@@ -22,6 +22,10 @@ echo "[3/5] Validating server.js..."
 node --check server.js || exit 1
 
 echo "[4/5] Restarting CryptoPilot safely..."
+if command -v pm2 >/dev/null 2>&1; then
+  pm2 startOrRestart ecosystem.config.cjs --env production >/dev/null 2>&1 || true
+  pm2 save >/dev/null 2>&1 || true
+fi
 pids="$(pgrep -f 'node server.js' || true)"
 if [ -n "$pids" ]; then
   kill $pids 2>/dev/null || true
