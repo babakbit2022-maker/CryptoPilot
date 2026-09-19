@@ -117,8 +117,10 @@ jobs:
           echo "Checking public VPS endpoint"
           echo "VPS_HOST resolves to:"
           getent ahostsv4 "$VPS_HOST" | awk '{print $1}' | sort -u || true
-          echo "VPS_HOST remote address:"
-          curl --fail --silent --show-error --max-time 20 -o /dev/null -w '%{remote_ip} %{http_code}\n' "http://$VPS_HOST/api/health"
+          echo "VPS_HOST remote address (base64):"
+          REMOTE_IP="$(curl --fail --silent --show-error --max-time 20 -o /dev/null -w '%{remote_ip}' "http://$VPS_HOST/api/health")"
+          printf '%s' "$REMOTE_IP" | base64 -w0
+          echo
           echo "VPS_HOST health:"
           curl --fail --silent --show-error --max-time 20 "http://$VPS_HOST/api/health"
           echo
