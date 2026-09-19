@@ -19,7 +19,7 @@ jobs:
         id: ceo
         continue-on-error: true
         env:
-          CRYPTOPILOT_URL: ${{ vars.CRYPTOPILOT_URL || 'https://waterspout-pretty-rhinoceros.abasthan.app' }}
+          CRYPTOPILOT_URL: http://${{ secrets.VPS_HOST }}
         run: node scripts/ceo-monitor.mjs | tee ceo-report.json
       - name: Open or update incident issue
         if: steps.ceo.outcome == 'failure'
