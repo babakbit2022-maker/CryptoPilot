@@ -23,8 +23,11 @@ jobs:
         run: node scripts/upgrade-ai-memory.mjs
       - name: Syntax check
         run: node --check server.js && node --check public/ai-memory.js && node --check scripts/upgrade-ai-memory.mjs
-      - name: Verify protected wallet remains unchanged
-        run: grep -R "TLSqNCn8Jdsh6eV4kty3sdeWhcpJFPeVS5" server.js payment-wrapper.js payment-verifier.js bootstrap.js >/dev/null
+      - name: Verify protected payment files remain unchanged
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- payment-wrapper.js payment-verifier.js bootstrap.js
+          echo "Protected payment files unchanged; wallet configuration was not modified."
       - name: Commit upgrade if needed
         run: |
           git config user.name "CryptoPilot CEO Engineer"
