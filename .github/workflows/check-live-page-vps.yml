@@ -35,6 +35,8 @@ jobs:
             print('LIVE DATA CACHE: max 60s')
             PY
             cp public/index.html "public/index.html.before-whale-pump-$(date +%Y%m%d-%H%M%S)"
+            cp /tmp/branch-index.html public/index.html
+            echo "LIVE FRONTEND: branch index deployed"
             python3 - <<'PY'
             from pathlib import Path
             import re
