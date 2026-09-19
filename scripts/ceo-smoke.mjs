@@ -18,6 +18,14 @@ for (const route of ['/api/health', '/api/ready', '/api/market-status', '/api/co
 
 if (!server.includes('coingecko_snapshot')) failures.push('server.js: market-data fallback missing');
 if (!server.includes('api.binance.com')) failures.push('server.js: Binance market provider missing');
+if (server.includes('res.cookie(') || server.includes('res.clearCookie(')) failures.push('server.js: auth still depends on unavailable Express cookie helpers');
+for (const file of ['public/index.html','public/crypto-chart.html','public/auth.html']) {
+  if (!fs.existsSync(new URL(`../${file}`, import.meta.url))) failures.push(`missing public file: ${file}`);
+}
+const index = fs.readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+if (index.includes("getElementById('coins')")) failures.push('public/index.html: stale #coins reference can abort dashboard loading');
+if (!index.includes('id="marketList"')) failures.push('public/index.html: market list container missing');
+
 
 const result = { checkedAt: new Date().toISOString(), version: packageJson.version, failures };
 console.log(JSON.stringify(result, null, 2));
