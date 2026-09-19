@@ -1,0 +1,34 @@
+name: Diagnose live data on VPS
+on:
+  workflow_dispatch:
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Diagnose
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          script: |
+            set -u
+            cd /opt/cryptopilot
+            echo "=== PM2 ==="
+            pm2 status || true
+            echo "=== PORT ==="
+            curl -sS -o /tmp/home -w "HOME_HTTP=%{http_code} BYTES=%{size_download}\n" http://127.0.0.1:3000/ || true
+            echo "=== COINS ==="
+            curl -sS --max-time 20 -o /tmp/coins -w "COINS_HTTP=%{http_code} BYTES=%{size_download}\n" http://127.0.0.1:3000/api/coins || true
+            node -e "try{const x=require('/tmp/coins'); console.log('COINS_COUNT=',Array.isArray(x)?x.length:(x.coins||[]).length)}catch(e){console.log('COINS_PARSE=FAIL',e.message)}" || true
+            echo "=== TOP GAINERS ==="
+            curl -sS --max-time 20 -o /tmp/gainers -w "GAINERS_HTTP=%{http_code} BYTES=%{size_download}\n" http://127.0.0.1:3000/api/top-gainers || true
+            node -e "try{const x=require('/tmp/gainers'); console.log('GAINERS_COUNT=',(x.gainers||[]).length)}catch(e){console.log('GAINERS_PARSE=FAIL',e.message)}" || true
+            echo "=== MARKET STATS ==="
+            curl -sS --max-time 20 -o /tmp/stats -w "STATS_HTTP=%{http_code} BYTES=%{size_download}\n" http://127.0.0.1:3000/api/market-stats || true
+            echo "=== DAILY PICKS ==="
+            curl -sS --max-time 20 -o /tmp/picks -w "PICKS_HTTP=%{http_code} BYTES=%{size_download}\n" http://127.0.0.1:3000/api/daily-picks || true
+            echo "=== LOG TAIL ==="
+            pm2 logs cryptopilot --lines 80 --nostream 2>&1 | tail -80 || true
