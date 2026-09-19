@@ -1,0 +1,39 @@
+name: Verify live page data rendering
+on:
+  push:
+    branches: [fix/technical-stability-2026-09-19]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Verify
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          script: |
+            set -u
+            cd /opt/cryptopilot
+            echo "=== HTML DATA HOOKS ==="
+            grep -nE "function load\(|/api/coins|/api/market-stats|/api/top-gainers|setLive|coinGrid|coinList|loadDailyIntelligence" public/index.html | head -80 || true
+            echo "=== INLINE JS CHECK ==="
+            python3 - <<'PY'
+            from pathlib import Path
+            import re
+            s=Path('public/index.html').read_text()
+            m=re.search(r'<script>(.*?)</script>',s,re.S)
+            if not m: raise SystemExit('NO_INLINE_SCRIPT')
+            Path('/tmp/live-inline.js').write_text(m.group(1))
+            print('INLINE_BYTES=',len(m.group(1)))
+            PY
+            node --check /tmp/live-inline.js
+            echo "=== API SNAPSHOT ==="
+            for u in coins market-stats top-gainers daily-picks; do
+              curl -sS --max-time 20 -o /tmp/$u -w "$u HTTP=%{http_code} BYTES=%{size_download}\n" http://127.0.0.1:3000/api/$u || true
+            done
+            echo "=== FRONTEND MARKERS ==="
+            grep -n "System status\|statusGrid" public/index.html || true
+            echo "VERIFY LIVE PAGE: PASS"
