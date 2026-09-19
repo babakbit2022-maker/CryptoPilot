@@ -74,10 +74,9 @@ function setLive(ok,txt){document.getElementById('liveText').textContent=txt;doc
 async function load(){
  try{
   const coins=await api('/api/coins');const data=(coins.coins||[]).map(norm);rows=data;
-  document.getElementById('coins').innerHTML=data.slice(0,12).map(coinCard).join('')||'<div class="panel">No market data returned.</div>';
   document.getElementById('marketList').innerHTML=data.map(coinCard).join('');document.getElementById('marketCount')?.replaceChildren(document.createTextNode((coins.count||data.length)+' assets'));
   const s=await api('/api/market-status');const online=s.markets?.filter(x=>x.online).length||0;setLive(online>0,online>0?'LIVE':'OFFLINE');
-  const b=data.find(x=>x.symbol==='BTC'),e=data.find(x=>x.symbol==='ETH');document.getElementById('btcMini').textContent=b?money(b.price):'—';document.getElementById('ethMini').textContent=e?money(e.price):'—';document.getElementById('providerMini').textContent=b?.provider||'—';document.getElementById('timeMini').textContent=new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});document.getElementById('updated').textContent='Updated '+new Date().toLocaleTimeString();
+  const b=data.find(x=>x.symbol==='BTC'),e=data.find(x=>x.symbol==='ETH');document.getElementById('btcMini').textContent=b?money(b.price):'—';document.getElementById('ethMini').textContent=e?money(e.price):'—';document.getElementById('providerMini').textContent=b?.provider||'—';document.getElementById('timeMini').textContent=new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});document.getElementById('timeMini').textContent=new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
   const avg=data.length?Math.round(data.reduce((s,x)=>s+Number(x.bullScore||0),0)/data.length):0;document.getElementById('healthScore').textContent=avg?avg+'/100':'—';document.getElementById('healthBar').style.width=Math.max(5,avg)+'%';
   document.getElementById('statusGrid').innerHTML=`<div class="statusBox"><small>Market API</small><strong class="${online?'up':'down'}">${online?'Online':'Offline'}</strong></div><div class="statusBox"><small>BTC</small><strong>${b?.provider||'—'}</strong></div><div class="statusBox"><small>ETH</small><strong>${e?.provider||'—'}</strong></div><div class="statusBox"><small>Scanner</small><strong>Ready</strong></div>`;
   if(b)showDetail(b);
