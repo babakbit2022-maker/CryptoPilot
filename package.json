@@ -6,10 +6,18 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check": "node --check server.js && node --check bootstrap.js"
   },
   "dependencies": {
-    "lucide": "^0.469.0"
+    "lucide": "^0.469.0",
+    "dotenv": "^16.4.7",
+    "express": "^5.1.0",
+    "helmet": "^8.1.0",
+    "express-rate-limit": "^7.5.0",
+    "bcryptjs": "^3.0.2",
+    "jsonwebtoken": "^9.0.2",
+    "better-sqlite3": "^11.10.0"
   },
   "optionalDependencies": {
     "@rollup/rollup-linux-x64-gnu": "^4.0.0"
