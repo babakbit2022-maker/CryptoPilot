@@ -73,11 +73,13 @@ const symbols={BTCUSDT:'BTC',ETHUSDT:'ETH',SOLUSDT:'SOL',BNBUSDT:'BNB',XRPUSDT:'
 const symbolMeta=new Map(Object.entries(symbols).map(([pair,symbol])=>[pair,{symbol,coingeckoId:null}]));
 const tfMap={'1m':1,'15m':15,'1h':60,'4h':240,'1d':1440};
 const cache=new Map();
+let universeInflight=null;
 async function refreshMarketUniverse(){
   const now=Date.now();
   const cached=cache.get('__universe');
   if(cached&&now-cached.t<60*1000)return cached.v;
-  try{
+  if(universeInflight)return universeInflight;
+  universeInflight=(async()=>{try{
     const cgPages=await Promise.all([1,2].map(async page=>{const u='https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page='+page+'&sparkline=false&price_change_percentage=24h';const r=await marketFetch(u,{headers:{accept:'application/json'},signal:AbortSignal.timeout(10000)});if(!r.ok)throw new Error('coingecko universe');return r.json();}));
     const cg={ok:true,json:async()=>cgPages.flat()};
     if(!cg.ok)throw new Error('coingecko universe');
@@ -108,7 +110,9 @@ async function refreshMarketUniverse(){
     const fallback=Object.entries(symbols).map(([pair,symbol])=>{const m=symbolMeta.get(pair)||{};return {pair,symbol,name:m.name||symbol,image:m.image||null,marketCap:m.marketCap||0,marketCapRank:m.marketCapRank||null,change24h:null,price:null,volume24h:null,chartable:true};});
     cache.set('__universe',{t:now,v:fallback});
     return fallback;
-  }
+  }finally{universeInflight=null;}}
+  )();
+  return universeInflight;
 }
 
 async function marketFetch(url,init={}){try{const r=await fetch(url,{...init,signal:init.signal||AbortSignal.timeout(9000)});if(r.ok)return r;throw new Error('market_http_'+r.status);}catch{const proxies=['https://api.allorigins.win/raw?url='+encodeURIComponent(url),'https://r.jina.ai/'+url];for(const p of proxies){try{const r=await fetch(p,{headers:{accept:'application/json'},signal:AbortSignal.timeout(12000)});if(r.ok)return r;}catch{}}throw new Error('market_provider_unavailable');}}
