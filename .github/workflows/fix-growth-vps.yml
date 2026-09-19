@@ -38,10 +38,13 @@ jobs:
             try{s=await api('/api/scanner?tf=1h')}catch{}
             let g={gainers:[]};
             try{g=await api('/api/top-gainers')}catch{}"""
-            if old not in s:
+            if old in s:
+              s=s.replace(old,new,1)
+              p.write_text(s,encoding='utf-8')
+            elif "let p={premium:false,picks:[],performance:{available:false}" in s:
+              print('GROWTH_PATCH_ALREADY_APPLIED')
+            else:
               raise SystemExit('growth patch target not found')
-            s=s.replace(old,new,1)
-            p.write_text(s,encoding='utf-8')
             PY
             python3 - <<'PY'
             import re
