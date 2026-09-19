@@ -97,8 +97,7 @@ function openChart(symbol){location.href=`/crypto-chart.html?symbol=${encodeURIC
 function setLive(ok,txt){document.getElementById('liveText').textContent=txt;document.querySelector('.led').style.background=ok?'var(--green)':'var(--red)';document.querySelector('.led').style.boxShadow=ok?'0 0 13px var(--green)':'0 0 13px var(--red)'}
 async function load(){
  try{
-  const coins=await api('/api/coins');const data=(coins.coins||[]).map(norm);rows=data;filteredRows=data;const stats=await api('/api/market-stats').catch(()=>null);if(stats){document.getElementById('marketStatsGrid').innerHTML=[['Assets',stats.totalAssets+'/500'],['Market Cap','
-  renderMarkets();
+  const coins=await api('/api/coins');const data=(coins.coins||[]).map(norm);rows=data;filteredRows=data;const stats=await api('/api/market-stats').catch(()=>null);if(stats){document.getElementById('marketStatsGrid').innerHTML=[['Assets',stats.totalAssets+'/500'],['Market Cap',Number(stats.totalMarketCap||0).toLocaleString(undefined,{maximumFractionDigits:0})],['Avg 24h',percent(stats.averageChange24h)],['Priced',stats.pricedAssets]].map(([a,b])=>'<div class="statusBox"><small>'+a+'</small><strong>'+b+'</strong></div>').join('')}  renderMarkets();
   
   const s=await api('/api/market-status');const online=s.markets?.filter(x=>x.online).length||0;setLive(online>0,online>0?'LIVE':'OFFLINE');
   const b=data.find(x=>x.symbol==='BTC'),e=data.find(x=>x.symbol==='ETH');document.getElementById('btcMini').textContent=b?money(b.price):'—';document.getElementById('ethMini').textContent=e?money(e.price):'—';document.getElementById('providerMini').textContent=b?.provider||'—';document.getElementById('timeMini').textContent=new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});document.getElementById('timeMini').textContent=new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
@@ -125,65 +124,7 @@ async function loadDailyIntelligence(){
   document.getElementById('dailyRiskCircle').title='Live risk '+liveRisk+'/100 · Market breadth '+breadth+'% positive';
   const gainers=g.gainers||[];
   const movers=gainers.slice(0,8);
-  const growthHTML=movers.length?movers.map((x,i)=>'<div class="growthItem" onclick="openChart(\\''+x.symbol+'\\')"><span class="gRank">#'+(i+1)+'</span><b class="gSymbol">'+x.symbol+'</b><span class="gPrice">'+money(x.price)+'</span><strong class="gChange up">+'+Number(x.change24h).toFixed(2)+'%</strong></div>').join(''):'<div class="growthItem growthEmpty">Live growth data unavailable</div>';
-  document.getElementById('growthBanner').innerHTML=growthHTML+(movers.length?growthHTML:'');
-  const deg=Math.max(0,Math.min(360,liveRisk*3.6));
-  document.getElementById('dailyRiskCircle').style.background='conic-gradient(var(--green) 0deg,var(--green) '+deg+'deg,#182c40 '+deg+'deg 360deg)';
-  document.getElementById('dailyPicks').innerHTML=picks.length?picks.map(x=>{
-    if(!p.premium){
-      return '<article class="pick lockedPick"><div class="pickSecret"><small>#'+x.rank+' · '+x.confidence+'</small><b>PREMIUM PICK</b><span class="score">Signal '+x.score+'/99</span><div class="reason">Multi-timeframe signals · trend · momentum · volume</div></div><div class="lockOverlay">🔒 Premium Daily Pick<span>Unlock the 5 coins and full AI reasoning</span></div></article>';
-    }
-    return '<article class="pick"><small>#'+x.rank+' · '+x.confidence+'</small><b>'+x.symbol+'</b><span class="score">Signal '+x.score+'/99</span><div class="reason">'+(x.signals||[]).slice(0,3).map(z=>z.tf+': '+(z.setup||'NEUTRAL')).join(' · ')+'</div><div class="pickLock">Premium AI reasoning</div></article>';
-  }).join(''):'<div class="pick">No multi-timeframe candidates available right now.</div>';
-  const perf=p.performance||{};
-  const perfValue=document.getElementById('perfValue'),perfMeta=document.getElementById('perfMeta');
-  if(perf.available && Number.isFinite(Number(perf.averageReturn))){
-    const v=Number(perf.averageReturn);
-    perfValue.textContent=(v>=0?'+':'')+v.toFixed(2)+'%';
-    perfValue.className='perfValue '+(v>=0?'up':'down');
-    perfMeta.textContent='Yesterday · '+perf.positiveCount+' of '+perf.totalCount+' tracked picks positive';
-  }else{
-    perfValue.textContent='—';
-    perfValue.className='perfValue';
-    perfMeta.textContent='No completed daily history yet — tracking starts with the first recorded daily picks.';
-  }
-  document.getElementById('picksUpdated').textContent='Updated '+new Date(p.updatedAt).toLocaleTimeString();
- }catch{
-  document.getElementById('dailyPicks').innerHTML='<div class="pick">Daily intelligence is temporarily unavailable.</div>';
-  document.getElementById('perfMeta').textContent='Historical performance is temporarily unavailable.';
- }
-}
-</script>
-\n</body>
-</html>+Number(stats.totalMarketCap||0).toLocaleString(undefined,{maximumFractionDigits:0})],['Avg 24h',percent(stats.averageChange24h)],['Priced',stats.pricedAssets]].map(([a,b])=>'<div class="statusBox"><small>'+a+'</small><strong>'+b+'</strong></div>').join('')}
-  renderMarkets();
-  
-  const s=await api('/api/market-status');const online=s.markets?.filter(x=>x.online).length||0;setLive(online>0,online>0?'LIVE':'OFFLINE');
-  const b=data.find(x=>x.symbol==='BTC'),e=data.find(x=>x.symbol==='ETH');document.getElementById('btcMini').textContent=b?money(b.price):'—';document.getElementById('ethMini').textContent=e?money(e.price):'—';document.getElementById('providerMini').textContent=b?.provider||'—';document.getElementById('timeMini').textContent=new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});document.getElementById('timeMini').textContent=new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
-  const avg=data.length?Math.round(data.reduce((s,x)=>s+Number(x.bullScore||0),0)/data.length):0;document.getElementById('healthScore').textContent=avg?avg+'/100':'—';document.getElementById('healthBar').style.width=Math.max(5,avg)+'%';
-  document.getElementById('statusGrid').innerHTML=`<div class="statusBox"><small>Market API</small><strong class="${online?'up':'down'}">${online?'Online':'Offline'}</strong></div><div class="statusBox"><small>BTC</small><strong>${b?.provider||'—'}</strong></div><div class="statusBox"><small>ETH</small><strong>${e?.provider||'—'}</strong></div><div class="statusBox"><small>Scanner</small><strong>Ready</strong></div>`;
-  if(b)showDetail(b);
- }catch(err){setLive(false,'OFFLINE');document.getElementById('updated').textContent='Market connection unavailable';document.getElementById('marketList').innerHTML='<div class="panel">Live market data is temporarily unavailable. Retrying automatically…</div>';document.getElementById('marketPagination').innerHTML=''}
- try{const d=await api('/api/scanner?tf=15m');scannerRows=(d.results||[]);renderScanner()}catch{document.getElementById('scanner').innerHTML='<tr><td colspan="7">Scanner unavailable</td></tr>'}
-}
-function renderScanner(){document.getElementById('scanner').innerHTML=scannerRows.slice(0,12).map(x=>{const up=(x.bullScore||0)>=(x.bearScore||0);return `<tr onclick="openChart('${x.symbol}')" style="cursor:pointer"><td><b>${names[x.symbol]||x.symbol}</b><div class="pair">${x.symbol}/USDT</div></td><td>${money(x.price)}</td><td class="${Number(x.momentum)>=0?'up':'down'}">${percent(Number(x.momentum)*100)}</td><td>${x.bullScore??'—'}</td><td>${x.bearScore??'—'}</td><td class="risk">${x.riskScore??'—'}</td><td><span class="badge ${up?'goodBadge':'badBadge'}">${x.setup||'NEUTRAL'}</span></td></tr>`}).join('')||'<tr><td colspan="7">No scanner results</td></tr>'}
-function showDetail(x){x=norm(x);document.getElementById('selectedPair').textContent=x.symbol+'/USDT';document.getElementById('detailGrid').innerHTML=[['Price',money(x.price)],['RSI',x.rsi?.toFixed?.(1)||'—'],['Bull',x.bullScore??'—'],['Risk',x.riskScore??'—'],['Setup',x.setup||'—']].map(([a,b])=>`<div class="metric"><small>${a}</small><b>${b}</b></div>`).join('')}
-document.getElementById('search')?.addEventListener('input',e=>{const q=e.target.value.toLowerCase();filteredRows=rows.filter(x=>(names[x.symbol]||x.name||'').toLowerCase().includes(q)||String(x.symbol||'').toLowerCase().includes(q));currentMarketPage=1;renderMarkets()});
-document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>{if(b.dataset.view==='account'){location.href='/auth.html';return;}document.querySelectorAll('[data-view]').forEach(x=>x.classList.remove('active'));document.querySelectorAll(`[data-view="${b.dataset.view}"]`).forEach(x=>x.classList.add('active'));if(b.dataset.view==='scanner')document.querySelector('#scanner')?.scrollIntoView({behavior:'smooth'});else if(b.dataset.view==='markets')document.querySelector('#marketList')?.scrollIntoView({behavior:'smooth'});else window.scrollTo({top:0,behavior:'smooth'})}));
-load();loadDailyIntelligence();setInterval(load,30000);setInterval(loadDailyIntelligence,60000);
-async function loadDailyIntelligence(){
- try{
-  const [p,s,g]=await Promise.all([api('/api/daily-picks'),api('/api/scanner?tf=1h'),api('/api/top-gainers')]);
-  const picks=p.picks||[],rs=s.results||[];
-  const avg=rs.length?Math.round(rs.slice(0,80).reduce((a,x)=>a+Number(x.riskScore||50),0)/Math.min(80,rs.length)):50;
-  const breadth=rs.length?Math.round(rs.slice(0,80).filter(x=>Number(x.momentum||0)>0).length/Math.min(80,rs.length)*100):50;
-  const liveRisk=Math.round(Math.max(5,Math.min(95,avg*0.65+(100-breadth)*0.35)));
-  document.getElementById('dailyRiskScore').textContent=liveRisk;
-  document.getElementById('dailyRiskLabel').textContent=liveRisk<35?'Low Risk':liveRisk<65?'Balanced':'High Volatility';
-  document.getElementById('dailyRiskCircle').title='Live risk '+liveRisk+'/100 · Market breadth '+breadth+'% positive';
-  const gainers=g.gainers||[];
-  const movers=gainers.slice(0,8);
-  const growthHTML=movers.length?movers.map((x,i)=>'<div class="growthItem" onclick="openChart(\\''+x.symbol+'\\')"><span class="gRank">#'+(i+1)+'</span><b class="gSymbol">'+x.symbol+'</b><span class="gPrice">'+money(x.price)+'</span><strong class="gChange up">+'+Number(x.change24h).toFixed(2)+'%</strong></div>').join(''):'<div class="growthItem growthEmpty">Live growth data unavailable</div>';
+  const growthHTML=movers.length?movers.map((x,i)=>'<div class="growthItem" onclick="openChart(&quot;'+x.symbol+'&quot;)"><span class="gRank">#'+(i+1)+'</span><b class="gSymbol">'+x.symbol+'</b><span class="gPrice">'+money(x.price)+'</span><strong class="gChange up">+'+Number(x.change24h).toFixed(2)+'%</strong></div>').join(''):'<div class="growthItem growthEmpty">Live growth data unavailable</div>';
   document.getElementById('growthBanner').innerHTML=growthHTML+(movers.length?growthHTML:'');
   const deg=Math.max(0,Math.min(360,liveRisk*3.6));
   document.getElementById('dailyRiskCircle').style.background='conic-gradient(var(--green) 0deg,var(--green) '+deg+'deg,#182c40 '+deg+'deg 360deg)';
