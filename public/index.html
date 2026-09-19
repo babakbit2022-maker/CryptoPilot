@@ -124,17 +124,17 @@ async function loadDailyIntelligence(){
   document.getElementById('dailyRiskLabel').textContent=liveRisk<35?'Low Risk':liveRisk<65?'Balanced':'High Volatility';
   document.getElementById('dailyRiskCircle').title='Live risk '+liveRisk+'/100 · Market breadth '+breadth+'% positive';
   const gainers=g.gainers||[];
-  const movers=gainers.slice(0,8);const growthHTML=movers.length?movers.map((x,i)=>'<div class="growthItem" data-pair="'+x.pair+'" onclick="openMarket(\''+x.pair+'\')"><span class="gRank">#'+(i+1)+'</span><b class="gSymbol">'+x.symbol+'</b><span class="gPrice">
-  const deg=Math.max(0,Math.min(360,avg*3.6));
+  const movers=gainers.slice(0,8);
+  const growthHTML=movers.length?movers.map((x,i)=>'<div class="growthItem" onclick="openChart(\\''+x.symbol+'\\')"><span class="gRank">#'+(i+1)+'</span><b class="gSymbol">'+x.symbol+'</b><span class="gPrice">'+money(x.price)+'</span><strong class="gChange up">+'+Number(x.change24h).toFixed(2)+'%</strong></div>').join(''):'<div class="growthItem growthEmpty">Live growth data unavailable</div>';
+  document.getElementById('growthBanner').innerHTML=growthHTML+(movers.length?growthHTML:'');
+  const deg=Math.max(0,Math.min(360,liveRisk*3.6));
   document.getElementById('dailyRiskCircle').style.background='conic-gradient(var(--green) 0deg,var(--green) '+deg+'deg,#182c40 '+deg+'deg 360deg)';
-
   document.getElementById('dailyPicks').innerHTML=picks.length?picks.map(x=>{
     if(!p.premium){
       return '<article class="pick lockedPick"><div class="pickSecret"><small>#'+x.rank+' · '+x.confidence+'</small><b>PREMIUM PICK</b><span class="score">Signal '+x.score+'/99</span><div class="reason">Multi-timeframe signals · trend · momentum · volume</div></div><div class="lockOverlay">🔒 Premium Daily Pick<span>Unlock the 5 coins and full AI reasoning</span></div></article>';
     }
     return '<article class="pick"><small>#'+x.rank+' · '+x.confidence+'</small><b>'+x.symbol+'</b><span class="score">Signal '+x.score+'/99</span><div class="reason">'+(x.signals||[]).slice(0,3).map(z=>z.tf+': '+(z.setup||'NEUTRAL')).join(' · ')+'</div><div class="pickLock">Premium AI reasoning</div></article>';
   }).join(''):'<div class="pick">No multi-timeframe candidates available right now.</div>';
-
   const perf=p.performance||{};
   const perfValue=document.getElementById('perfValue'),perfMeta=document.getElementById('perfMeta');
   if(perf.available && Number.isFinite(Number(perf.averageReturn))){
@@ -153,40 +153,6 @@ async function loadDailyIntelligence(){
   document.getElementById('perfMeta').textContent='Historical performance is temporarily unavailable.';
  }
 }
-
-</script>
-\n</body>
-</html>
-+formatPrice(x.price)+'</span><strong class="gChange up">+'+Number(x.change24h).toFixed(2)+'%</strong></div>').join(''): '<div class="growthItem growthEmpty">Live growth data unavailable</div>';document.getElementById('growthBanner').innerHTML=growthHTML+(movers.length?growthHTML:'');
-  const deg=Math.max(0,Math.min(360,avg*3.6));
-  document.getElementById('dailyRiskCircle').style.background='conic-gradient(var(--green) 0deg,var(--green) '+deg+'deg,#182c40 '+deg+'deg 360deg)';
-
-  document.getElementById('dailyPicks').innerHTML=picks.length?picks.map(x=>{
-    if(!p.premium){
-      return '<article class="pick lockedPick"><div class="pickSecret"><small>#'+x.rank+' · '+x.confidence+'</small><b>PREMIUM PICK</b><span class="score">Signal '+x.score+'/99</span><div class="reason">Multi-timeframe signals · trend · momentum · volume</div></div><div class="lockOverlay">🔒 Premium Daily Pick<span>Unlock the 5 coins and full AI reasoning</span></div></article>';
-    }
-    return '<article class="pick"><small>#'+x.rank+' · '+x.confidence+'</small><b>'+x.symbol+'</b><span class="score">Signal '+x.score+'/99</span><div class="reason">'+(x.signals||[]).slice(0,3).map(z=>z.tf+': '+(z.setup||'NEUTRAL')).join(' · ')+'</div><div class="pickLock">Premium AI reasoning</div></article>';
-  }).join(''):'<div class="pick">No multi-timeframe candidates available right now.</div>';
-
-  const perf=p.performance||{};
-  const perfValue=document.getElementById('perfValue'),perfMeta=document.getElementById('perfMeta');
-  if(perf.available && Number.isFinite(Number(perf.averageReturn))){
-    const v=Number(perf.averageReturn);
-    perfValue.textContent=(v>=0?'+':'')+v.toFixed(2)+'%';
-    perfValue.className='perfValue '+(v>=0?'up':'down');
-    perfMeta.textContent='Yesterday · '+perf.positiveCount+' of '+perf.totalCount+' tracked picks positive';
-  }else{
-    perfValue.textContent='—';
-    perfValue.className='perfValue';
-    perfMeta.textContent='No completed daily history yet — tracking starts with the first recorded daily picks.';
-  }
-  document.getElementById('picksUpdated').textContent='Updated '+new Date(p.updatedAt).toLocaleTimeString();
- }catch{
-  document.getElementById('dailyPicks').innerHTML='<div class="pick">Daily intelligence is temporarily unavailable.</div>';
-  document.getElementById('perfMeta').textContent='Historical performance is temporarily unavailable.';
- }
-}
-
 </script>
 \n</body>
 </html>
