@@ -88,20 +88,20 @@ jobs:
           set -euo pipefail
           mkdir -p dist fallback
           cat > fallback/short.ass <<EOF
-[Script Info]
-ScriptType: v4.00+
-PlayResX: 768
-PlayResY: 1152
-[V4+ Styles]
-Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
-Style: Main,Arial,48,&H00FFFFFF,&H00FFFFFF,&H00111111,&H66000000,1,0,1,3,1,5,40,40,40,1
-[Events]
-Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
-Dialogue: 0,0:00:00.00,0:00:08.00,Main,,0,0,0,,CRYPTOPILOT AI\N${TOPIC}
-Dialogue: 0,0:00:08.00,0:00:16.00,Main,,0,0,0,,BTC: $${BTC}\N24h: ${BTC24}%
-Dialogue: 0,0:00:16.00,0:00:24.00,Main,,0,0,0,,ETH: $${ETH}\N24h: ${ETH24}%
-Dialogue: 0,0:00:24.00,0:00:32.00,Main,,0,0,0,,Learn. Analyze. Manage risk.\Ncryptopilot-ai-global-jwsiba.v2.appdeploy.ai\NEducational content, not financial advice.
-EOF
+          [Script Info]
+          ScriptType: v4.00+
+          PlayResX: 768
+          PlayResY: 1152
+          [V4+ Styles]
+          Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
+          Style: Main,Arial,48,&H00FFFFFF,&H00FFFFFF,&H00111111,&H66000000,1,0,1,3,1,5,40,40,40,1
+          [Events]
+          Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
+          Dialogue: 0,0:00:00.00,0:00:08.00,Main,,0,0,0,,CRYPTOPILOT AI\N${TOPIC}
+          Dialogue: 0,0:00:08.00,0:00:16.00,Main,,0,0,0,,BTC: $${BTC}\N24h: ${BTC24}%
+          Dialogue: 0,0:00:16.00,0:00:24.00,Main,,0,0,0,,ETH: $${ETH}\N24h: ${ETH24}%
+          Dialogue: 0,0:00:24.00,0:00:32.00,Main,,0,0,0,,Learn. Analyze. Manage risk.\Ncryptopilot-ai-global-jwsiba.v2.appdeploy.ai\NEducational content, not financial advice.
+          EOF
           ffmpeg -y -f lavfi -i 'color=c=0x0b1020:s=768x1152:r=30' -vf "ass=fallback/short.ass" -t 32 -pix_fmt yuv420p -c:v libx264 -preset veryfast -crf 27 -an dist/CryptoPilot-Daily-Short.mp4
       - name: Verify video file
         run: |
