@@ -120,8 +120,8 @@ jobs:
           curl --fail --silent --show-error --max-time 20 "http://$VPS_HOST/api/health"
           echo
           curl --fail --silent --show-error --max-time 20 "http://$VPS_HOST/" | grep -q "growthViewport"
-          echo "Checking direct public IP 31.171.101.88"
-          curl --fail --silent --show-error --max-time 20 "http://31.171.101.88/api/health"
+          echo "Checking current VPS public IP 31.171.101.69"
+          curl --fail --silent --show-error --max-time 20 "http://31.171.101.69/api/health"
           echo
-          curl --fail --silent --show-error --max-time 20 "http://31.171.101.88/" | grep -q "growthViewport"
-          echo "Public endpoint and direct IP are serving the latest moving Highest Growth ticker."
+          curl --fail --silent --show-error --max-time 20 "http://31.171.101.69/" | grep -q "growthViewport"
+          echo "Public endpoint and current VPS public IP are serving the latest moving Highest Growth ticker."
