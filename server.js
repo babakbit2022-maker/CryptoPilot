@@ -102,7 +102,7 @@ async function refreshMarketUniverse(){
     cache.set('__universe',{t:now,v});
     return v;
   }catch{
-    const fallback=Object.entries(symbols).map(([pair,symbol])=>({pair,symbol,name:symbol}));
+    const fallback=Object.entries(symbols).map(([pair,symbol])=>{const m=symbolMeta.get(pair)||{};return {pair,symbol,name:m.name||symbol,image:m.image||null,marketCap:m.marketCap||0,marketCapRank:m.marketCapRank||null,change24h:null,price:null,volume24h:null,chartable:true};});
     cache.set('__universe',{t:now,v:fallback});
     return fallback;
   }
