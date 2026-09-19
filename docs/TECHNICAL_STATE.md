@@ -96,3 +96,8 @@ Automated repairs may change deterministic technical/infrastructure code and tes
 - No wallet/payment address or visual design was changed during this infrastructure repair.
 - Deploy verification was updated to stop assuming the VPS egress IP is the inbound public endpoint.
 - Browser-level verification from the user's own network is still the final external check; the production endpoint itself is confirmed reachable from GitHub Actions.
+
+
+## 2026-09-19 — Force deployment of current main
+- Current main was advanced after the last successful VPS deployment; this marker intentionally triggers the deployment workflow so `/opt/cryptopilot` is synchronized with the exact current main commit.
+- No wallet/payment configuration or visual design is changed by this marker.
