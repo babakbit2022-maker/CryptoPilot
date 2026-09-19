@@ -79,10 +79,9 @@ async function refreshMarketUniverse(){
     const cg={ok:true,json:async()=>cgPages.flat()};
     if(!cg.ok)throw new Error('coingecko universe');
     const market=(await cg.json()).slice(0,500);
-    const binanceUrls=['https://data-api.binance.vision/api/v3/exchangeInfo','https://api-gcp.binance.com/api/v3/exchangeInfo','https://api.binance.com/api/v3/exchangeInfo','https://api1.binance.com/api/v3/exchangeInfo','https://api2.binance.com/api/v3/exchangeInfo','https://api3.binance.com/api/v3/exchangeInfo','https://api4.binance.com/api/v3/exchangeInfo'];
-    let info=null;
-    for(const u of binanceUrls){try{const r=await fetch(u,{headers:{accept:'application/json'},signal:AbortSignal.timeout(7000)});if(r.ok){info=await r.json();break;}}catch{}}
-    const tradable=new Set((info?.symbols||[]).filter(x=>x.status==='TRADING'&&x.quoteAsset==='USDT'&&x.isSpotTradingAllowed!==false).map(x=>x.symbol));
+    // Do not block the dashboard on Binance exchangeInfo. VPS environments can return 451/timeouts;
+    // chartability is resolved on-demand by the market-data provider chain instead.
+    const tradable=new Set();
     const seen=new Set();
     const v=[];
     for(const c of market){
@@ -94,7 +93,7 @@ async function refreshMarketUniverse(){
       // Chart availability is resolved on-demand through Binance market-data fallbacks.
       symbols[pair]=symbol;
       symbolMeta.set(pair,{symbol,coingeckoId:c.id,marketCap:c.market_cap||0,marketCapRank:c.market_cap_rank||null,name:c.name||symbol,image:c.image||null});
-      const chartable=tradable.size ? tradable.has(pair) : true;
+      const chartable=true;
       v.push({pair,symbol,name:c.name||symbol,marketCap:c.market_cap||0,marketCapRank:c.market_cap_rank||null,image:c.image||null,change24h:c.price_change_percentage_24h??null,price:c.current_price??null,volume24h:c.total_volume??null,chartable});
     }
     // Keep the top-500 CoinGecko market-cap universe; only live Binance USDT pairs are chartable.
