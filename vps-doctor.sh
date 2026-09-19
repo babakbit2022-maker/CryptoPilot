@@ -4,7 +4,7 @@ set -o pipefail
 
 APP="/opt/cryptopilot"
 BRANCH="appdeploy-vps-transfer-20260919"
-URL="http://127.0.0.1:3000/api/market/BTCUSDT?tf=1h&limit=5"
+URL="http://127.0.0.1:3000/api/health"
 
 cd "$APP" || exit 1
 
