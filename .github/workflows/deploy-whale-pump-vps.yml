@@ -1,0 +1,124 @@
+name: Deploy whale and pump intelligence to VPS
+
+on:
+  push:
+    branches: [whale-pump-intelligence-2026-09-19]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch current VPS without resetting it
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          BRANCH: whale-pump-intelligence-2026-09-19
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          envs: BRANCH
+          script: |
+            set -e
+            cd /opt/cryptopilot
+            git fetch origin "$BRANCH" --quiet
+            git show "origin/$BRANCH:server.js" > /tmp/branch-server.js
+            git show "origin/$BRANCH:public/index.html" > /tmp/branch-index.html
+
+            cp server.js "server.js.before-whale-pump-$(date +%Y%m%d-%H%M%S)"
+            cp public/index.html "public/index.html.before-whale-pump-$(date +%Y%m%d-%H%M%S)"
+
+            python3 - <<'PY'
+            from pathlib import Path
+            import re
+            cur=Path("server.js").read_text()
+            src=Path("/tmp/branch-server.js").read_text()
+
+            if "CREATE TABLE IF NOT EXISTS whale_snapshots" not in cur:
+                m=re.search(r"CREATE TABLE IF NOT EXISTS whale_snapshots\([^;]+?\);",src)
+                if not m: raise SystemExit("whale table source missing")
+                anchor="CREATE TABLE IF NOT EXISTS ai_predictions"
+                pos=cur.find(anchor)
+                if pos<0: raise SystemExit("server table anchor missing")
+                end=cur.find(";",pos)+1
+                cur=cur[:end]+"\n"+m.group(0)+cur[end:]
+
+            if "function whaleSignal(" not in cur:
+                s=src.find("function whaleSignal(")
+                e=src.find("\napp.get('/api/whale-intelligence'",s)
+                if s<0 or e<0: raise SystemExit("whaleSignal source missing")
+                cur=cur[:cur.find("\napp.get(",cur.find("app.get('/api/coins'"))] + src[s:e] + cur[cur.find("\napp.get(",cur.find("app.get('/api/coins'"))):]
+
+            if "app.get('/api/whale-intelligence'" not in cur:
+                s=src.find("app.get('/api/whale-intelligence'")
+                e=src.find("\napp.get(",s+10)
+                if s<0 or e<0: raise SystemExit("whale endpoint source missing")
+                insert_at=cur.rfind("\napp.listen(")
+                if insert_at<0: insert_at=len(cur)
+                cur=cur[:insert_at]+"\n"+src[s:e]+cur[insert_at:]
+
+            Path("server.js").write_text(cur)
+            PY
+
+            python3 - <<'PY'
+            from pathlib import Path
+            import re
+            cur=Path("public/index.html").read_text()
+            src=Path("/tmp/branch-index.html").read_text()
+
+            if 'id="whaleIntel"' not in cur:
+                s=src.find('<section class="panel" style="margin-top:14px"><div class="panelHead"><div><h2>🐋 بازی امروز نهنگ‌ها')
+                e=src.find('<section class="contentGrid">',s)
+                if s<0 or e<0: raise SystemExit("whale section source missing")
+                insert=src[s:e]
+                marker='<section class="contentGrid">'
+                cur=cur.replace(marker,insert+marker,1)
+
+            if 'function loadWhaleIntelligence()' not in cur:
+                s=src.find('async function loadWhaleIntelligence(){')
+                e=src.find('async function loadDailyIntelligence(){',s)
+                if s<0 or e<0: raise SystemExit("whale JS source missing")
+                marker='async function loadDailyIntelligence(){'
+                cur=cur.replace(marker,src[s:e]+marker,1)
+
+            if 'setInterval(loadPumpCandidates,30000)' not in cur:
+                cur=cur.replace('load();loadDailyIntelligence();loadWhaleIntelligence();setInterval(load,30000);setInterval(loadDailyIntelligence,60000);setInterval(loadWhaleIntelligence,300000);',
+                                'load();loadDailyIntelligence();loadWhaleIntelligence();setInterval(load,30000);setInterval(loadDailyIntelligence,60000);setInterval(loadWhaleIntelligence,300000);setInterval(loadPumpCandidates,30000);')
+            if 'loadPumpCandidates();' not in cur:
+                cur=cur.replace('if(b)showDetail(b);','if(b)showDetail(b);loadPumpCandidates();',1)
+
+            if '.whaleGrid{' not in cur:
+                css='<style id="whale-pump-css">.whaleGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}.whaleCard{background:#081624;border:1px solid #1b3047;border-radius:13px;padding:13px;min-width:0}.whaleTop{display:flex;justify-content:space-between;gap:8px}.whaleDir{font-size:9px;font-weight:800}.whaleCard b{font-size:15px}.whaleMeta{display:flex;justify-content:space-between;gap:8px;color:#8da1b7;font-size:9px;margin-top:7px}.whaleReason{color:#a8b8c8;font-size:10px;line-height:1.45;margin-top:8px}.whaleScore{font-weight:900;font-size:11px}@media(max-width:1100px){.whaleGrid{grid-template-columns:repeat(2,1fr)}}@media(max-width:650px){.whaleGrid{grid-template-columns:1fr}}</style>'
+                cur=cur.replace('</head>',css+'</head>',1)
+
+            Path("public/index.html").write_text(cur)
+            PY
+
+            node --check server.js
+            python3 - <<'PY'
+            from pathlib import Path
+            import re
+            s=Path("public/index.html").read_text()
+            m=re.search(r'<script>(.*?)</script>',s,re.S)
+            Path("/tmp/index-inline.js").write_text(m.group(1) if m else "")
+            PY
+            node --check /tmp/index-inline.js
+
+            pm2 restart cryptopilot --update-env
+            sleep 3
+
+            python3 - <<'PY'
+            import json,urllib.request
+            def get(path):
+                with urllib.request.urlopen("http://127.0.0.1:3000"+path,timeout=20) as r:
+                    return r.status,json.loads(r.read().decode())
+            st,w=get("/api/whale-intelligence")
+            st2,c=get("/api/coins")
+            assert st==200 and w.get("ok") is True, (st,w)
+            assert st2==200 and len(c.get("coins",[]))>=400, (st2,len(c.get("coins",[])))
+            assert int(w.get("coverage",0))>=400, w
+            print("WHALE_PUMP_VPS_TEST: PASS")
+            print("UNIVERSE:",w.get("universe"),"COVERAGE:",w.get("coverage"),"COINS:",len(c.get("coins",[])))
+            PY
