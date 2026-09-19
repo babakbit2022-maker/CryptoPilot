@@ -85,6 +85,15 @@ jobs:
               ufw allow 80/tcp || true
               ufw allow 443/tcp || true
             fi
+            echo "VPS_LOCAL_IPS:"
+            hostname -I || true
+            echo "VPS_PUBLIC_IP:"
+            curl -4 --silent --show-error --max-time 10 https://api.ipify.org || true
+            echo
+            echo "LISTENING_PORTS:"
+            ss -lntp | grep -E ':(80|443|3000)\\b' || true
+            echo "FIREWALL_STATUS:"
+            if command -v ufw >/dev/null 2>&1; then ufw status verbose || true; fi
 
             sleep 5
             if ! curl --fail --silent --show-error --max-time 20 http://127.0.0.1:3000/api/health; then
