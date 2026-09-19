@@ -117,7 +117,13 @@ jobs:
             print('INLINE_BYTES=',len(m.group(1)))
             PY
             node --check /tmp/live-inline.js
-            echo "=== ROOT CAUSE LIVE DATA ==="
+            echo "=== PUBLIC ROUTING CHECK ==="
+            echo "LISTENERS:"; ss -ltnp | grep -E ':80 |:443 |:3000 |:3001 |:3002 ' || true
+            echo "NGINX CONFIG:"; nginx -T 2>/dev/null | grep -E "listen |proxy_pass|root " | head -80 || true
+            curl -sS --max-time 15 -o /tmp/home80.html -w "PORT80_HTTP=%{http_code} BYTES=%{size_download}\n" http://127.0.0.1/ || true
+            grep -q "const api=async" /tmp/home80.html && echo "PORT80_API_PRESENT=YES" || echo "PORT80_API_PRESENT=NO"
+            grep -q "document.getElementById('marketList').innerHTML" /tmp/home80.html && echo "PORT80_MARKET_RENDER=YES" || echo "PORT80_MARKET_RENDER=NO"
+                        echo "=== ROOT CAUSE LIVE DATA ==="
             curl -sS --max-time 20 -o /tmp/coins-live.json -w "COINS_HTTP=%{http_code} BYTES=%{size_download}\n" http://127.0.0.1:3000/api/coins || true
             python3 - <<'PY'
             import json
