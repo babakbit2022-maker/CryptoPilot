@@ -117,6 +117,20 @@ jobs:
             print('INLINE_BYTES=',len(m.group(1)))
             PY
             node --check /tmp/live-inline.js
+            echo "=== ROOT CAUSE LIVE DATA ==="
+            curl -sS --max-time 20 -o /tmp/coins-live.json -w "COINS_HTTP=%{http_code} BYTES=%{size_download}\n" http://127.0.0.1:3000/api/coins || true
+            python3 - <<'PY'
+            import json
+            try:
+              d=json.load(open('/tmp/coins-live.json'))
+              print("COINS_COUNT=",d.get("count") if isinstance(d,dict) else len(d))
+              print("COINS_LEN=",len(d.get("coins",[])) if isinstance(d,dict) else "array")
+              print("UPDATED_AT=",d.get("updatedAt") if isinstance(d,dict) else "")
+            except Exception as e: print("COINS_JSON_ERROR=",e)
+            PY
+            curl -sS --max-time 20 -o /tmp/home-live.html -w "HOME_HTTP=%{http_code} BYTES=%{size_download}\n" http://127.0.0.1:3000/ || true
+            grep -q "const api=async" /tmp/home-live.html && echo "HOME_API_PRESENT=YES" || echo "HOME_API_PRESENT=NO"
+            grep -q "document.getElementById('marketList').innerHTML" /tmp/home-live.html && echo "MARKET_RENDER_PRESENT=YES" || echo "MARKET_RENDER_PRESENT=NO"
             echo "=== API SNAPSHOT ==="
             for u in coins market-stats top-gainers daily-picks; do
               curl -sS --max-time 20 -o /tmp/$u -w "$u HTTP=%{http_code} BYTES=%{size_download}\n" http://127.0.0.1:3000/api/$u || true
