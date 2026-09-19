@@ -10,31 +10,23 @@ cd "$APP" || exit 1
 
 echo "[1/5] Syncing CryptoPilot..."
 git fetch origin "$BRANCH" >/dev/null 2>&1 || { echo "git fetch failed"; exit 1; }
-git checkout "$BRANCH" >/dev/null 2>&1 || { echo "branch checkout failed"; exit 1; }
+git checkout -B "$BRANCH" "origin/$BRANCH" >/dev/null 2>&1 || { echo "branch checkout failed"; exit 1; }
 git reset --hard "origin/$BRANCH" >/dev/null 2>&1 || { echo "git reset failed"; exit 1; }
 
 echo "[2/5] Checking dependencies..."
-if [ ! -d node_modules ]; then
-  npm install --no-audit --no-fund || exit 1
-fi
+npm install --omit=dev --no-audit --no-fund || exit 1
 
-echo "[3/5] Validating server.js..."
+echo "[3/5] Validating application..."
 node --check server.js || exit 1
+node --check bootstrap.js || exit 1
 
 echo "[4/5] Restarting CryptoPilot safely..."
 if command -v pm2 >/dev/null 2>&1; then
-  pm2 startOrRestart ecosystem.config.cjs --env production >/dev/null 2>&1 || true
-  pm2 save >/dev/null 2>&1 || true
-fi
-pids="$(pgrep -f 'node server.js' || true)"
-if [ -n "$pids" ]; then
-  kill $pids 2>/dev/null || true
-  sleep 3
-fi
-
-# If no supervisor brings it back, start one managed process ourselves.
-if ! pgrep -f 'node server.js' >/dev/null 2>&1; then
-  nohup npm start >/var/log/cryptopilot.log 2>&1 &
+  pm2 startOrRestart ecosystem.config.cjs --env production || exit 1
+  pm2 save || exit 1
+else
+  pkill -f "node bootstrap.js" 2>/dev/null || true
+  nohup node bootstrap.js >/var/log/cryptopilot.log 2>&1 &
   sleep 4
 fi
 
@@ -45,6 +37,6 @@ if curl -fsS --max-time 20 "$URL" | head -c 600; then
 else
   echo
   echo "API did not answer. Last server log:"
-  tail -n 40 /var/log/cryptopilot.log 2>/dev/null || true
+  tail -n 60 /var/log/cryptopilot.log 2>/dev/null || true
   exit 2
 fi
