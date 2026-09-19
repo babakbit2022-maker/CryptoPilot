@@ -1,0 +1,53 @@
+name: Fix data rendering on VPS
+on:
+  push:
+    branches: [fix/technical-stability-2026-09-19]
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Patch and test
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          script: |
+            set -e
+            cd /opt/cryptopilot
+            cp public/index.html public/index.html.before-data-render-fix
+            python3 - <<'PY'
+            from pathlib import Path
+            p=Path('public/index.html')
+            s=p.read_text()
+            old="const coins=await api('/api/coins');const data=(coins.coins||[]).map(norm);"
+            new="const coins=await api('/api/coins');const data=(Array.isArray(coins)?coins:(coins.coins||[])).map(norm);"
+            if old not in s:
+              raise SystemExit('DATA_RENDER_TARGET_NOT_FOUND')
+            s=s.replace(old,new,1)
+            p.write_text(s)
+            print('DATA_RENDER_PATCH=OK')
+            PY
+            python3 - <<'PY'
+            from pathlib import Path
+            import re
+            s=Path('public/index.html').read_text()
+            m=re.search(r'<script>(.*?)</script>',s,re.S)
+            if not m: raise SystemExit('NO_INLINE_SCRIPT')
+            Path('/tmp/live-inline.js').write_text(m.group(1))
+            PY
+            node --check /tmp/live-inline.js
+            pm2 restart cryptopilot --update-env
+            sleep 3
+            c=$(curl -sS -o /tmp/c -w "%{http_code}" http://127.0.0.1:3000/api/coins)
+            g=$(curl -sS -o /tmp/g -w "%{http_code}" http://127.0.0.1:3000/api/top-gainers)
+            m=$(curl -sS -o /tmp/m -w "%{http_code}" http://127.0.0.1:3000/api/market-stats)
+            echo "COINS_HTTP=$c"
+            echo "GAINERS_HTTP=$g"
+            echo "STATS_HTTP=$m"
+            test "$c" = 200
+            test "$g" = 200
+            test "$m" = 200
+            echo "DATA RENDER FIX: PASS"
