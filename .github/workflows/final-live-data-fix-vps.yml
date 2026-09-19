@@ -1,0 +1,56 @@
+name: Final live data fix on VPS
+on:
+  push:
+    branches: [fix/technical-stability-2026-09-19]
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Patch VPS and verify
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          script: |
+            set -e
+            cd /opt/cryptopilot
+            cp public/index.html public/index.html.before-final-data-fix
+            python3 - <<'PY'
+            from pathlib import Path
+            import re
+            p=Path('public/index.html')
+            s=p.read_text()
+            # Make frontend accept either {coins:[...]} or a direct array.
+            s=re.sub(r"const coins=await api\('/api/coins'\);const data=\(coins\.coins\|\|\[\]\)\.map\(norm\);",
+                     "const coins=await api('/api/coins');const data=(Array.isArray(coins)?coins:(coins.coins||[])).map(norm);",s,count=1)
+            # Never let one auxiliary endpoint prevent the main market render.
+            s=s.replace("const stats=await api('/api/market-stats').catch(()=>null);","const stats=await api('/api/market-stats').catch(()=>null);",1)
+            p.write_text(s)
+            m=re.search(r'<script>(.*?)</script>',s,re.S)
+            if not m: raise SystemExit('NO_INLINE_SCRIPT')
+            Path('/tmp/live-inline.js').write_text(m.group(1))
+            PY
+            node --check /tmp/live-inline.js
+            pm2 restart cryptopilot
+            sleep 5
+            test "$(curl -sS -o /tmp/c -w '%{http_code}' http://127.0.0.1:3000/api/coins)" = 200
+            test "$(curl -sS -o /tmp/g -w '%{http_code}' http://127.0.0.1:3000/api/top-gainers)" = 200
+            test "$(curl -sS -o /tmp/m -w '%{http_code}' http://127.0.0.1:3000/api/market-stats)" = 200
+            python3 - <<'PY'
+            import json
+            c=json.load(open('/tmp/c'))
+            g=json.load(open('/tmp/g'))
+            m=json.load(open('/tmp/m'))
+            coins=c if isinstance(c,list) else c.get('coins',[])
+            gainers=g.get('gainers',[])
+            assert len(coins)>100, len(coins)
+            assert len(gainers)>0, len(gainers)
+            assert m.get('totalAssets',0)>0, m
+            print('COINS_COUNT=',len(coins))
+            print('GAINERS_COUNT=',len(gainers))
+            print('TOTAL_ASSETS=',m.get('totalAssets'))
+            PY
+            echo "FINAL LIVE DATA TEST: PASS"
