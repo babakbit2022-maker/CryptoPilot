@@ -62,3 +62,13 @@ Automated repairs may change deterministic technical/infrastructure code and tes
 - Fixed the dashboard error fallback so it no longer targets the removed stale `#coins` element.
 - Commit: `b470ec07d8b602938777a96c12ef1070fd925be3`.
 - Verification still required after VPS deployment: browser-level check of 500-coin pagination, search, banner, tool links, and mobile layout.
+
+
+## 2026-09-19 — Daily AI Picks premium lock + historical performance
+- Daily AI Picks are now server-side premium gated: free users receive only locked placeholders; premium users receive the five actual picks and signal details.
+- Added persistent SQLite tables `daily_pick_runs` and `daily_pick_items` so each calendar day's first generated five picks are recorded with entry prices.
+- Added `/api/daily-picks/history` for authenticated premium users.
+- Dashboard now shows **Yesterday's Daily Picks Performance** only when a real recorded prior-day run exists. The displayed figure is equal-weight price change from recorded entry prices and is explicitly labeled historical, not guaranteed return.
+- No wallet/payment address/configuration was changed.
+- Important: because the project did not previously persist Daily AI Picks history, the dashboard may initially show “No completed daily history yet”; once two daily runs have been recorded, yesterday's figure can be computed from actual stored entries and current market prices.
+- Browser/VPS verification remains required after deployment; do not claim the live VPS is updated until verified.
