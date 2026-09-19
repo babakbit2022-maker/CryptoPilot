@@ -72,3 +72,10 @@ Automated repairs may change deterministic technical/infrastructure code and tes
 - No wallet/payment address/configuration was changed.
 - Important: because the project did not previously persist Daily AI Picks history, the dashboard may initially show “No completed daily history yet”; once two daily runs have been recorded, yesterday's figure can be computed from actual stored entries and current market prices.
 - Browser/VPS verification remains required after deployment; do not claim the live VPS is updated until verified.
+
+
+## 2026-09-19 — Highest Growth Now live moving ticker
+- Restored the requested moving-market behavior for Highest Growth Now: top live gainers are rendered as a horizontally scrolling ticker rather than a static row.
+- Uses the existing live /api/top-gainers data, shows rank/symbol/price/24h change, duplicates the track for continuous looping, pauses on hover, and clicking a mover opens its market view.
+- Preserved the existing dashboard visual structure and did not change wallet/payment configuration.
+- VPS/browser verification remains required after deployment.
