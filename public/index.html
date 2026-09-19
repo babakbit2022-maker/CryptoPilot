@@ -148,7 +148,7 @@ async function loadDailyIntelligence(){
   document.getElementById('dailyRiskCircle').title='Live risk '+liveRisk+'/100 · Market breadth '+breadth+'% positive';
   const gainers=g.gainers||[];
   const movers=gainers.slice(0,8);
-  const growthHTML=movers.length?movers.map((x,i)=>'<div class="growthItem" onclick="openChart(\\''+x.symbol+'\\')"><span class="gRank">#'+(i+1)+'</span><b class="gSymbol">'+x.symbol+'</b><span class="gPrice">'+money(x.price)+'</span><strong class="gChange up">+'+Number(x.change24h).toFixed(2)+'%</strong></div>').join(''):'<div class="growthItem growthEmpty">Live growth data unavailable</div>';
+  const growthHTML=movers.length?movers.map((x,i)=>{const row=document.createElement('div');row.className='growthItem';row.onclick=()=>openChart(x.symbol);row.innerHTML='<span class="gRank">#'+(i+1)+'</span><b class="gSymbol">'+x.symbol+'</b><span class="gPrice">'+money(x.price)+'</span><strong class="gChange up">+'+Number(x.change24h).toFixed(2)+'%</strong>';return row.outerHTML;}).join(''):'<div class="growthItem growthEmpty">Live growth data unavailable</div>';
   document.getElementById('growthBanner').innerHTML=growthHTML+(movers.length?growthHTML:'');
   const deg=Math.max(0,Math.min(360,liveRisk*3.6));
   document.getElementById('dailyRiskCircle').style.background='conic-gradient(var(--green) 0deg,var(--green) '+deg+'deg,#182c40 '+deg+'deg 360deg)';
