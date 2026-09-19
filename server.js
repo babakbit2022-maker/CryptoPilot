@@ -32,8 +32,23 @@ const apiLimit = rateLimit({ windowMs: 60 * 1000, max: 120, standardHeaders: tru
 const aiLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false });
 app.use('/api/', apiLimit);
 function sign(u) { return jwt.sign({ id: u.id, email: u.email }, JWT_SECRET, { expiresIn: '2h' }); }
-function setSession(res, u) { res.cookie('cp_session', sign(u), { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 2 * 60 * 60 * 1000, path: '/' }); }
-function clearSession(res) { res.clearCookie('cp_session', { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/' }); }
+function sessionCookieOptions(maxAge) {
+  const secure = process.env.NODE_ENV === 'production';
+  return [
+    'HttpOnly',
+    'Path=/',
+    'SameSite=Lax',
+    `Max-Age=${Math.max(0, Math.floor(maxAge / 1000))}`,
+    ...(secure ? ['Secure'] : [])
+  ].join('; ');
+}
+function setSession(res, u) {
+  // Do not depend on cookie-parser/express-session; keep auth self-contained.
+  res.setHeader('Set-Cookie', `cp_session=${encodeURIComponent(sign(u))}; ${sessionCookieOptions(2 * 60 * 60 * 1000)}`);
+}
+function clearSession(res) {
+  res.setHeader('Set-Cookie', `cp_session=; ${sessionCookieOptions(0)}`);
+}
 function readCookie(req, name) { const h = req.headers.cookie || ''; const m = h.match(new RegExp('(?:^|;\\s*)' + name.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&') + '=([^;]*)')); return m ? decodeURIComponent(m[1]) : ''; }
 function optionalAuth(req,res,next){try{const bearer=String(req.headers.authorization||'');const raw=bearer.startsWith('Bearer ')?bearer.slice(7):readCookie(req,'cp_session');if(!raw||!JWT_SECRET){req.user=null;return next();}const p=jwt.verify(raw,JWT_SECRET);req.user=db.prepare('SELECT id,email,plan,role,email_verified FROM users WHERE id=?').get(p.id)||null;}catch{req.user=null;}next();}
 function auth(req, res, next) { try { if (!JWT_SECRET) throw new Error(); const bearer = (req.headers.authorization || '').startsWith('Bearer ') ? req.headers.authorization.slice(7) : ''; const raw = bearer || readCookie(req, 'cp_session'); if (!raw) throw new Error(); req.user = jwt.verify(raw, JWT_SECRET); const u = db.prepare('SELECT id,email,plan,role,email_verified FROM users WHERE id=?').get(req.user.id); if (!u) throw new Error(); req.user = u; next(); } catch { res.status(401).json({ error: 'unauthorized' }); } }
