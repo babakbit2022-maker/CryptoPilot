@@ -37,8 +37,7 @@ const apiLimit = rateLimit({ windowMs: 60 * 1000, max: 120, standardHeaders: tru
 const aiLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false });
 app.use('/api/', apiLimit);
 function sign(u) { return jwt.sign({ id: u.id, email: u.email }, JWT_SECRET, { expiresIn: '2h' }); }
-function sessionCookieOptions(maxAge) {
-  const secure = process.env.NODE_ENV === 'production';
+function sessionCookieOptions(maxAge, secure=false) {
   return [
     'HttpOnly',
     'Path=/',
@@ -47,12 +46,14 @@ function sessionCookieOptions(maxAge) {
     ...(secure ? ['Secure'] : [])
   ].join('; ');
 }
-function setSession(res, u) {
-  // Do not depend on cookie-parser/express-session; keep auth self-contained.
-  res.setHeader('Set-Cookie', `cp_session=${encodeURIComponent(sign(u))}; ${sessionCookieOptions(2 * 60 * 60 * 1000)}`);
+function setSession(res, u, req) {
+  // Keep HTTP deployments usable while automatically enabling Secure cookies behind HTTPS.
+  const secure = Boolean(req?.secure);
+  res.setHeader('Set-Cookie', `cp_session=${encodeURIComponent(sign(u))}; ${sessionCookieOptions(2 * 60 * 60 * 1000, secure)}`);
 }
-function clearSession(res) {
-  res.setHeader('Set-Cookie', `cp_session=; ${sessionCookieOptions(0)}`);
+function clearSession(res, req) {
+  const secure = Boolean(req?.secure);
+  res.setHeader('Set-Cookie', `cp_session=; ${sessionCookieOptions(0, secure)}`);
 }
 function readCookie(req, name) { const h = req.headers.cookie || ''; const m = h.match(new RegExp('(?:^|;\\s*)' + name.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&') + '=([^;]*)')); return m ? decodeURIComponent(m[1]) : ''; }
 function optionalAuth(req,res,next){try{const bearer=String(req.headers.authorization||'');const raw=bearer.startsWith('Bearer ')?bearer.slice(7):readCookie(req,'cp_session');if(!raw||!JWT_SECRET){req.user=null;return next();}const p=jwt.verify(raw,JWT_SECRET);req.user=db.prepare('SELECT id,email,plan,role,email_verified FROM users WHERE id=?').get(p.id)||null;}catch{req.user=null;}next();}
@@ -64,9 +65,9 @@ function aiMemoryEvaluate(rows,currentPrice){for(const p of rows){if(p.status!==
 function aiMemorySummary(symbol,tf){const rows=db.prepare("SELECT * FROM ai_predictions WHERE symbol=? AND tf=? ORDER BY created_at DESC LIMIT 30").all(symbol,tf);const resolved=rows.filter(x=>x.status==='resolved');const wins=resolved.filter(x=>x.outcome==='TP1_HIT').length;return {total:rows.length,resolved:resolved.length,wins,accuracy:resolved.length?Math.round(wins/resolved.length*100):null,pending:rows.length-resolved.length,last:rows[0]||null};}
 app.get('/api/health', (req,res)=>res.status(200).json({ok:true,service:'CryptoPilot AI',version:'2.7-technical',time:new Date().toISOString()}));
 app.get('/api/ready', (req,res)=>res.status(200).json({ok:true,ready:true,version:'2.7.0'}));
-app.post('/api/auth/register', authLimit, async (req,res)=>{ const email=String(req.body?.email||'').trim().toLowerCase(),password=req.body?.password; if(!/^\S+@\S+\.\S+$/.test(email)||typeof password!=='string'||password.length<8)return res.status(400).json({error:'invalid_credentials'}); try{const hash=await bcrypt.hash(password,12);const r=db.prepare('INSERT INTO users(email,password) VALUES(?,?)').run(email,hash);const u=db.prepare('SELECT id,email,plan,role FROM users WHERE id=?').get(r.lastInsertRowid);setSession(res,u);audit(u.id,'register');res.json({user:u});}catch{res.status(409).json({error:'email_exists'});}});
-app.post('/api/auth/login', authLimit, async (req,res)=>{const email=String(req.body?.email||'').trim().toLowerCase(),password=String(req.body?.password||'');const u=db.prepare('SELECT * FROM users WHERE email=?').get(email);if(!u||!(await bcrypt.compare(password,u.password)))return res.status(401).json({error:'invalid_login'});setSession(res,u);audit(u.id,'login');res.json({user:{id:u.id,email:u.email,plan:u.plan,role:u.role}});});
-app.post('/api/auth/logout',(req,res)=>{clearSession(res);res.json({ok:true});});
+app.post('/api/auth/register', authLimit, async (req,res)=>{ const email=String(req.body?.email||'').trim().toLowerCase(),password=req.body?.password; if(!/^\S+@\S+\.\S+$/.test(email)||typeof password!=='string'||password.length<8)return res.status(400).json({error:'invalid_credentials'}); try{const hash=await bcrypt.hash(password,12);const r=db.prepare('INSERT INTO users(email,password) VALUES(?,?)').run(email,hash);const u=db.prepare('SELECT id,email,plan,role FROM users WHERE id=?').get(r.lastInsertRowid);setSession(res,u,req);audit(u.id,'register');res.json({user:u});}catch{res.status(409).json({error:'email_exists'});}});
+app.post('/api/auth/login', authLimit, async (req,res)=>{const email=String(req.body?.email||'').trim().toLowerCase(),password=String(req.body?.password||'');const u=db.prepare('SELECT * FROM users WHERE email=?').get(email);if(!u||!(await bcrypt.compare(password,u.password)))return res.status(401).json({error:'invalid_login'});setSession(res,u,req);audit(u.id,'login');res.json({user:{id:u.id,email:u.email,plan:u.plan,role:u.role}});});
+app.post('/api/auth/logout',(req,res)=>{clearSession(res,req);res.json({ok:true});});
 app.get('/api/me',auth,(req,res)=>res.json({user:req.user}));
 const symbols={BTCUSDT:'BTC',ETHUSDT:'ETH',SOLUSDT:'SOL',BNBUSDT:'BNB',XRPUSDT:'XRP',DOGEUSDT:'DOGE',ADAUSDT:'ADA',AVAXUSDT:'AVAX',LINKUSDT:'LINK',DOTUSDT:'DOT',LTCUSDT:'LTC',TRXUSDT:'TRX'};
 const symbolMeta=new Map(Object.entries(symbols).map(([pair,symbol])=>[pair,{symbol,coingeckoId:null}]));
