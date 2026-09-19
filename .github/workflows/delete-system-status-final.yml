@@ -1,0 +1,46 @@
+name: Remove System Status from VPS
+on:
+  push:
+    branches: [fix/technical-stability-2026-09-19]
+jobs:
+  remove:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          script: |
+            set -e
+            cd /opt/cryptopilot
+            cp public/index.html public/index.html.before-system-status-final-delete
+            python3 - <<'PY'
+            from pathlib import Path
+            import re
+            p=Path('public/index.html')
+            s=p.read_text()
+            s=re.sub(r'<aside class="panel">\s*<div class="panelHead"><h2>System status</h2>.*?</aside>\s*','',s,count=1,flags=re.S)
+            s=s.replace("document.getElementById('statusGrid').innerHTML=", "/* statusGrid removed */ null /* ")
+            p.write_text(s)
+            PY
+            if grep -q 'System status\|statusGrid' public/index.html; then
+              echo "SYSTEM STATUS REMOVAL CHECK: FAIL"
+              exit 1
+            fi
+            python3 - <<'PY'
+            from pathlib import Path
+            import re
+            s=Path('public/index.html').read_text()
+            m=re.search(r'<script>(.*?)</script>',s,re.S)
+            if not m: raise SystemExit('NO_INLINE_SCRIPT')
+            Path('/tmp/inline.js').write_text(m.group(1))
+            PY
+            node --check /tmp/inline.js
+            pm2 restart cryptopilot
+            sleep 4
+            test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/coins)" = 200
+            test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/top-gainers)" = 200
+            echo "SYSTEM STATUS DELETE: PASS"
