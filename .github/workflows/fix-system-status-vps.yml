@@ -1,0 +1,104 @@
+name: Fix System Status on VPS
+
+on:
+  push:
+    branches:
+      - fix/technical-stability-2026-09-19
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fix-and-test:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    steps:
+      - name: Patch system status logic on current VPS and verify live APIs
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: 87.107.190.74
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || '22' }}
+          command_timeout: 10m
+          script: |
+            set -e
+            cd /opt/cryptopilot
+            cp public/index.html public/index.html.before-system-status-fix
+            python3 - <<'PY'
+            from pathlib import Path
+            p=Path('/opt/cryptopilot/public/index.html')
+            s=p.read_text(encoding='utf-8')
+            old="""async function load(){
+ try{
+  const coins=await api('/api/coins');const data=(coins.coins||[]).map(norm);rows=data;
+  document.getElementById('marketList').innerHTML=data.map(coinCard).join('');document.getElementById('marketCount')?.replaceChildren(document.createTextNode((coins.count||data.length)+' assets'));
+  const s=await api('/api/market-status');const online=s.markets?.filter(x=>x.online).length||0;setLive(online>0,online>0?'LIVE':'OFFLINE');
+  const b=data.find(x=>x.symbol==='BTC'),e=data.find(x=>x.symbol==='ETH');document.getElementById('btcMini').textContent=b?money(b.price):'—';document.getElementById('ethMini').textContent=e?money(e.price):'—';document.getElementById('providerMini').textContent=b?.provider||'—';document.getElementById('timeMini').textContent=new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});document.getElementById('timeMini').textContent=new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+  const avg=data.length?Math.round(data.reduce((s,x)=>s+Number(x.bullScore||0),0)/data.length):0;document.getElementById('healthScore').textContent=avg?avg+'/100':'—';document.getElementById('healthBar').style.width=Math.max(5,avg)+'%';
+  document.getElementById('statusGrid').innerHTML=`<div class="statusBox"><small>Market API</small><strong class="${online?'up':'down'}">${online?'Online':'Offline'}</strong></div><div class="statusBox"><small>BTC</small><strong>${b?.provider||'—'}</strong></div><div class="statusBox"><small>ETH</small><strong>${e?.provider||'—'}</strong></div><div class="statusBox"><small>Scanner</small><strong>Ready</strong></div>`;
+  if(b)showDetail(b);
+ }catch(err){setLive(false,'OFFLINE');document.getElementById('updated').textContent='Market connection unavailable';document.getElementById('coins').innerHTML='<div class="panel">Live market data is temporarily unavailable. Retrying automatically…</div>'}
+ try{const d=await api('/api/scanner?tf=15m');scannerRows=(d.results||[]);renderScanner()}catch{document.getElementById('scanner').innerHTML='<tr><td colspan="7">Scanner unavailable</td></tr>'}
+}"""
+            new="""async function load(){
+ let data=[]; let coinsOk=false; let statusOk=false; let scannerOk=false; let statusData={};
+ try{
+  const coins=await api('/api/coins');data=(coins.coins||[]).map(norm);rows=data;coinsOk=data.length>0;
+  document.getElementById('marketList').innerHTML=data.map(coinCard).join('');
+  document.getElementById('marketCount')?.replaceChildren(document.createTextNode((coins.count||data.length)+' assets'));
+ }catch(err){}
+ try{statusData=await api('/api/market-status');statusOk=true}catch(err){}
+ const online=(statusData.markets||[]).filter(x=>x.online).length;
+ const b=data.find(x=>x.symbol==='BTC'),e=data.find(x=>x.symbol==='ETH');
+ const liveOk=coinsOk && (online>0 || !!b);
+ setLive(liveOk,liveOk?'LIVE':'OFFLINE');
+ document.getElementById('btcMini').textContent=b?money(b.price):'—';
+ document.getElementById('ethMini').textContent=e?money(e.price):'—';
+ document.getElementById('providerMini').textContent=b?.provider||'—';
+ document.getElementById('timeMini').textContent=new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+ const avg=data.length?Math.round(data.reduce((sum,x)=>sum+Number(x.bullScore||0),0)/data.length):0;
+ document.getElementById('healthScore').textContent=avg?avg+'/100':'—';
+ document.getElementById('healthBar').style.width=Math.max(5,avg)+'%';
+ try{const d=await api('/api/scanner?tf=15m');scannerRows=(d.results||[]);scannerOk=scannerRows.length>0;renderScanner()}catch(err){document.getElementById('scanner').innerHTML='<tr><td colspan="7">Scanner unavailable</td></tr>'}
+ document.getElementById('statusGrid').innerHTML=`<div class="statusBox"><small>Market API</small><strong class="${coinsOk?'up':'down'}">${coinsOk?'Online':'Offline'}</strong></div><div class="statusBox"><small>BTC</small><strong class="${b?'up':'down'}">${b?(b.provider||'Online'):'Unavailable'}</strong></div><div class="statusBox"><small>ETH</small><strong class="${e?'up':'down'}">${e?(e.provider||'Online'):'Unavailable'}</strong></div><div class="statusBox"><small>Scanner</small><strong class="${scannerOk?'up':'down'}">${scannerOk?'Ready':'Unavailable'}</strong></div>`;
+ if(b)showDetail(b);
+}"""
+            if old not in s:
+              raise SystemExit('system status patch target not found')
+            p.write_text(s.replace(old,new,1),encoding='utf-8')
+            PY
+            python3 - <<'PY'
+            import re
+            from pathlib import Path
+            s=Path('/opt/cryptopilot/public/index.html').read_text(encoding='utf-8')
+            m=re.search(r'<script>(.*?)</script>',s,re.S)
+            if not m: raise SystemExit('inline script not found')
+            Path('/tmp/cryptopilot-system-status.js').write_text(m.group(1),encoding='utf-8')
+            PY
+            node --check /tmp/cryptopilot-system-status.js
+            pm2 restart cryptopilot
+            sleep 3
+            for ep in market-status coins scanner?tf=15m; do
+              code=$(curl -sS -o /tmp/ep.json -w '%{http_code}' --max-time 15 "http://127.0.0.1:3000/api/$ep")
+              echo "$ep HTTP=$code"
+              test "$code" = "200"
+            done
+            python3 - <<'PY'
+            import json
+            coins=json.load(open('/tmp/ep.json')) if False else None
+            PY
+            curl --fail --silent --show-error --max-time 15 http://127.0.0.1:3000/api/coins -o /tmp/coins.json
+            curl --fail --silent --show-error --max-time 15 'http://127.0.0.1:3000/api/scanner?tf=15m' -o /tmp/scanner.json
+            python3 - <<'PY'
+            import json
+            c=json.load(open('/tmp/coins.json'))
+            s=json.load(open('/tmp/scanner.json'))
+            assert len(c.get('coins',[]))>0, 'coins empty'
+            assert len(s.get('results',[]))>0, 'scanner empty'
+            print('COINS=',len(c['coins']))
+            print('SCANNER=',len(s['results']))
+            print('SYSTEM STATUS: PASS')
+            PY
