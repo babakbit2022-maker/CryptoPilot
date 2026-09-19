@@ -129,7 +129,7 @@ async function getAnalysis(pair,tf){
     try{
       const raw=await load();
       const rows=raw.map(x=>({t:+x[0],o:+x[1],h:+x[2],l:+x[3],c:+x[4],v:+x[5]}));
-      if(!rows.length)throw new Error(provider+'_empty');
+      if(rows.length<Math.min(20,limit))throw new Error(provider+'_insufficient');
       const v={symbol:symbols[pair],pair,tf,provider,updatedAt:new Date().toISOString(),candles:rows.map(x=>[x.t,x.o,x.h,x.l,x.c,x.v]),analysis:analyze(rows)};
       cache.set(key,{t:now,v});
       return v;
