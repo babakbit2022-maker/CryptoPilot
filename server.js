@@ -76,9 +76,9 @@ const cache=new Map();
 async function refreshMarketUniverse(){
   const now=Date.now();
   const cached=cache.get('__universe');
-  if(cached&&now-cached.t<30*1000)return cached.v;
+  if(cached&&now-cached.t<60*1000)return cached.v;
   try{
-    const cgPages=await Promise.all([1,2].map(async page=>{const r=await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page='+page+'&sparkline=false&price_change_percentage=24h',{headers:{accept:'application/json'},signal:AbortSignal.timeout(10000)});if(!r.ok)throw new Error('coingecko universe');return r.json();}));
+    const cgPages=await Promise.all([1,2].map(async page=>{const u='https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page='+page+'&sparkline=false&price_change_percentage=24h';const r=await marketFetch(u,{headers:{accept:'application/json'},signal:AbortSignal.timeout(10000)});if(!r.ok)throw new Error('coingecko universe');return r.json();}));
     const cg={ok:true,json:async()=>cgPages.flat()};
     if(!cg.ok)throw new Error('coingecko universe');
     const market=(await cg.json()).slice(0,500);
@@ -103,6 +103,8 @@ async function refreshMarketUniverse(){
     cache.set('__universe',{t:now,v});
     return v;
   }catch{
+    const previous=cache.get('__universe')?.v;
+    if(Array.isArray(previous)&&previous.length>=100)return previous;
     const fallback=Object.entries(symbols).map(([pair,symbol])=>{const m=symbolMeta.get(pair)||{};return {pair,symbol,name:m.name||symbol,image:m.image||null,marketCap:m.marketCap||0,marketCapRank:m.marketCapRank||null,change24h:null,price:null,volume24h:null,chartable:true};});
     cache.set('__universe',{t:now,v:fallback});
     return fallback;
