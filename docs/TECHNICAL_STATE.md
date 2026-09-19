@@ -1,0 +1,53 @@
+# CryptoPilot AI — Technical State Log
+
+## 2026-09-19 — Stability pass
+
+### Baseline
+- Production code baseline before this pass: commit `31dac95451afd6ca83899ad6b130d74f2aa9606c`.
+- Application version: 2.7.0.
+- Production monitor target used by CEO Engineer: `http://87.107.190.74`.
+- Wallet/payment receive address is protected and is not to be changed by automated repairs.
+- Visual design/branding/public payment UI are protected from automated technical repairs.
+
+### Problems found and fixed
+1. **Dashboard JavaScript crash**
+   - `public/index.html` still called `document.getElementById('coins')` after the old `#coins` block had been replaced by `#marketList`.
+   - Result: the main market-loading function could abort before rendering the live market list.
+   - Fixed by removing the stale DOM reference.
+
+2. **Authentication cookie failure**
+   - `server.js` used `res.cookie()` and `res.clearCookie()`, but the project does not install Express cookie-parser/session helpers that provide those methods.
+   - Registration/login could therefore fail after credential handling.
+   - Fixed with self-contained HTTP `Set-Cookie` headers using HttpOnly, SameSite=Lax, Path=/, Max-Age and Secure in production.
+
+3. **Chart controls**
+   - The chart had a duplicate 1-minute button labelled `1M` and no actual horizontal pan implementation.
+   - Fixed by removing the duplicate button and adding pointer-drag horizontal panning while preserving wheel zoom and reset.
+
+4. **CEO technical monitoring**
+   - Expanded static and production checks to cover dashboard/chart/auth assets and the live BTC market payload.
+   - Added regression checks for the removed `#coins` reference and missing market list container.
+
+### Verification
+- The fixes were committed and merged to `main` as:
+  `d43c007e76f3e80aaa77273093d45ac650e3be7a`
+- The merge was verified by GitHub as successful.
+- The pre-fix CEO Engineer run had passed infrastructure/API checks, but it did not exercise the browser DOM, which is why the dashboard crash escaped that monitor.
+- A direct network test from this execution environment could not connect to port 80 on the VPS, so VPS post-deploy reachability is **not yet independently re-verified from here**.
+
+### Next technical checks
+1. Confirm the VPS has deployed commit `d43c007e...`.
+2. Browser-level test: dashboard loads 500-market list without console errors.
+3. Browser-level test: BTC/ETH chart loads, updates, zooms and pans.
+4. Browser-level test: sign-up/login/logout session works.
+5. Test Premium/payment flow without changing the protected receive address.
+6. Test Daily AI Picks and AI Trade Vision.
+7. Confirm public domain and VPS IP serve the same release.
+8. Keep recording every technical change in this file.
+
+## Rule for future automated repairs
+Automated repairs may change deterministic technical/infrastructure code and tests, but must not change:
+- USDT payment wallet/receive address
+- payment secrets
+- visual design/branding/layout unless Babak explicitly approves it
+- public payment wording/address configuration
