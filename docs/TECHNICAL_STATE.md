@@ -86,3 +86,13 @@ Automated repairs may change deterministic technical/infrastructure code and tes
 
 
 - 2026-09-19: VPS public HTTP exposure fix queued; nginx reverse proxy is now part of the VPS deployment workflow.
+
+
+## 2026-09-19 04:44 +0330 — VPS public endpoint / networking verification
+- Re-deployed current `main` to `/opt/cryptopilot`; PM2 reports CryptoPilot `2.7.0` online.
+- Nginx reverse proxy on port 80 is valid and local health checks pass.
+- The configured production `VPS_HOST` is reachable externally from GitHub Actions and returns HTTP 200 for `/api/health` with version `2.7-technical`; the live root also contains the restored Highest Growth ticker marker.
+- Direct probes to the previously assumed IPs `31.171.101.88` and `31.171.101.69` timed out from GitHub-hosted runners. Therefore those addresses must not be presented as the canonical site URL; the configured `VPS_HOST` is the canonical production endpoint and may sit behind NAT/proxy.
+- No wallet/payment address or visual design was changed during this infrastructure repair.
+- Deploy verification was updated to stop assuming the VPS egress IP is the inbound public endpoint.
+- Browser-level verification from the user's own network is still the final external check; the production endpoint itself is confirmed reachable from GitHub Actions.
