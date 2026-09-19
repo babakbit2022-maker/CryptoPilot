@@ -21,6 +21,19 @@ jobs:
             git show origin/whale-pump-intelligence-2026-09-19:server.js > /tmp/branch-server.js
             git show origin/whale-pump-intelligence-2026-09-19:public/index.html > /tmp/branch-index.html
             cp server.js "server.js.before-whale-pump-$(date +%Y%m%d-%H%M%S)"
+            python3 - <<'PY'
+            from pathlib import Path
+            p=Path('server.js')
+            s=p.read_text()
+            old='if(cached&&now-cached.t<3*60*1000)return cached.v;'
+            new='if(cached&&now-cached.t<60*1000)return cached.v;'
+            if old in s:
+                s=s.replace(old,new,1)
+            elif new not in s:
+                raise SystemExit('UNIVERSE_CACHE_PATTERN_NOT_FOUND')
+            p.write_text(s)
+            print('LIVE DATA CACHE: max 60s')
+            PY
             cp public/index.html "public/index.html.before-whale-pump-$(date +%Y%m%d-%H%M%S)"
             python3 - <<'PY'
             from pathlib import Path
