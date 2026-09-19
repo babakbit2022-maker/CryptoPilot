@@ -1,0 +1,69 @@
+name: Fix Highest Growth on VPS
+
+on:
+  push:
+    branches:
+      - fix/technical-stability-2026-09-19
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fix-and-test:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    steps:
+      - name: Patch current VPS frontend without changing design or payment data
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: 87.107.190.74
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || '22' }}
+          command_timeout: 10m
+          script: |
+            set -e
+            cd /opt/cryptopilot
+            cp public/index.html public/index.html.before-growth-fix
+            python3 - <<'PY'
+            from pathlib import Path
+            p=Path('/opt/cryptopilot/public/index.html')
+            s=p.read_text(encoding='utf-8')
+            old="const [p,s,g]=await Promise.all([api('/api/daily-picks'),api('/api/scanner?tf=1h'),api('/api/top-gainers')]);"
+            new="""let p={premium:false,picks:[],performance:{available:false},updatedAt:new Date().toISOString()};
+            try{p=await api('/api/daily-picks')}catch{}
+            let s={results:[]};
+            try{s=await api('/api/scanner?tf=1h')}catch{}
+            let g={gainers:[]};
+            try{g=await api('/api/top-gainers')}catch{}"""
+            if old not in s:
+              raise SystemExit('growth patch target not found')
+            s=s.replace(old,new,1)
+            p.write_text(s,encoding='utf-8')
+            PY
+            python3 - <<'PY'
+            import re
+            from pathlib import Path
+            s=Path('/opt/cryptopilot/public/index.html').read_text(encoding='utf-8')
+            m=re.search(r'<script>(.*?)</script>',s,re.S)
+            if not m: raise SystemExit('inline script not found')
+            Path('/tmp/cryptopilot-growth.js').write_text(m.group(1),encoding='utf-8')
+            PY
+            node --check /tmp/cryptopilot-growth.js
+            pm2 restart cryptopilot
+            sleep 3
+            curl --fail --silent --show-error --max-time 15 http://127.0.0.1:3000/api/top-gainers -o /tmp/top-gainers.json
+            python3 - <<'PY'
+            import json
+            d=json.load(open('/tmp/top-gainers.json'))
+            if not isinstance(d.get('gainers'),list) or not d['gainers']:
+              raise SystemExit('top-gainers returned no gainers')
+            print('TOP_GAINERS=',len(d['gainers']))
+            print('FIRST=',d['gainers'][0].get('symbol'),d['gainers'][0].get('change24h'))
+            PY
+            curl --fail --silent --show-error --max-time 15 http://127.0.0.1:3000/ -o /tmp/home.html
+            grep -q 'Highest Growth Now' /tmp/home.html
+            grep -q "let p={premium:false,picks:[],performance:{available:false}" /tmp/home.html
+            echo 'VPS GROWTH FIX TEST: PASS'
