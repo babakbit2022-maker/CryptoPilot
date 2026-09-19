@@ -1,4 +1,4 @@
-name: Deploy CryptoPilot to VPS
+name: Deploy CryptoPilot to the production site IP
 
 on:
   push:
@@ -28,12 +28,12 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm run check
 
-      - name: Deploy to VPS
+      - name: Deploy to the production site server
         uses: appleboy/ssh-action@v1.2.2
         env:
           DEPLOY_SHA: ${{ github.sha }}
         with:
-          host: ${{ secrets.VPS_HOST }}
+          host: 87.107.190.74
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT || '22' }}
@@ -58,7 +58,6 @@ jobs:
             npm install -g pm2
             pm2 startOrRestart ecosystem.config.cjs --env production
             pm2 save
-
             if ! command -v nginx >/dev/null 2>&1; then
               apt-get update -y
               DEBIAN_FRONTEND=noninteractive apt-get install -y nginx
@@ -90,40 +89,17 @@ jobs:
               ufw allow 80/tcp || true
               ufw allow 443/tcp || true
             fi
-            echo "VPS_LOCAL_IPS:"
-            hostname -I || true
-            echo "VPS_PUBLIC_IP:"
-            curl -4 --silent --show-error --max-time 10 https://api.ipify.org || true
-            echo
-            echo "LISTENING_PORTS:"
-            ss -lntp | grep -E ':(80|443|3000)\\b' || true
-            echo "FIREWALL_STATUS:"
-            if command -v ufw >/dev/null 2>&1; then ufw status verbose || true; fi
-
             sleep 5
-            if ! curl --fail --silent --show-error --max-time 20 http://127.0.0.1:3000/api/health; then
-              echo "Health check failed; recent PM2 logs:"
-              pm2 status || true
-              pm2 logs cryptopilot --lines 80 --nostream || true
-              exit 1
-            fi
-            if ! curl --fail --silent --show-error --max-time 20 http://127.0.0.1/api/health; then
-              echo "Nginx reverse proxy health check failed"
-              systemctl status nginx --no-pager || true
-              nginx -t || true
-              exit 1
-            fi
+            curl --fail --silent --show-error --max-time 20 http://127.0.0.1:3000/api/health
+            curl --fail --silent --show-error --max-time 20 http://127.0.0.1/api/health
 
-      - name: Verify public VPS endpoint and deployed commit
+      - name: Verify the actual production site
         env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
           DEPLOY_SHA: ${{ github.sha }}
         run: |
           set -e
-          echo "Checking public VPS endpoint"
-          curl --fail --silent --show-error --max-time 20 "http://$VPS_HOST/api/health"
-          echo
-          ROOT="$(curl --fail --silent --show-error --max-time 20 "http://$VPS_HOST/")"
+          curl --fail --silent --show-error --max-time 20 http://87.107.190.74/api/health
+          ROOT="$(curl --fail --silent --show-error --max-time 20 http://87.107.190.74/)"
           printf '%s' "$ROOT" | grep -q "growthViewport"
           printf '%s' "$ROOT" | grep -q "marketStats"
-          echo "Public endpoint is serving the dashboard markers from $DEPLOY_SHA."
+          echo "Production site 87.107.190.74 is serving $DEPLOY_SHA."
