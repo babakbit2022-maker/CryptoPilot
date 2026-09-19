@@ -76,7 +76,7 @@ const cache=new Map();
 async function refreshMarketUniverse(){
   const now=Date.now();
   const cached=cache.get('__universe');
-  if(cached&&now-cached.t<3*60*1000)return cached.v;
+  if(cached&&now-cached.t<30*1000)return cached.v;
   try{
     const cgPages=await Promise.all([1,2].map(async page=>{const r=await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page='+page+'&sparkline=false&price_change_percentage=24h',{headers:{accept:'application/json'},signal:AbortSignal.timeout(10000)});if(!r.ok)throw new Error('coingecko universe');return r.json();}));
     const cg={ok:true,json:async()=>cgPages.flat()};
