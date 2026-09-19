@@ -1,0 +1,25 @@
+name: Inspect live data response shape
+on:
+  workflow_dispatch:
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Inspect
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          script: |
+            set -u
+            cd /opt/cryptopilot
+            for u in coins market-stats top-gainers daily-picks; do
+              echo "=== $u ==="
+              curl -sS --max-time 20 http://127.0.0.1:3000/api/$u | head -c 500
+              echo
+            done
+            echo "=== LOAD FUNCTION ==="
+            sed -n '95,125p' public/index.html
