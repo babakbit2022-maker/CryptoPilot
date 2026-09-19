@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS payments(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id
 CREATE TABLE IF NOT EXISTS audit_log(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER,action TEXT NOT NULL,meta TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS ai_predictions(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER,symbol TEXT NOT NULL,tf TEXT NOT NULL,bias TEXT NOT NULL,entry REAL,stop REAL,tp1 REAL,tp2 REAL,created_at TEXT DEFAULT CURRENT_TIMESTAMP,resolved_at TEXT,status TEXT NOT NULL DEFAULT 'pending',outcome TEXT,source TEXT DEFAULT 'live',FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL);
 CREATE INDEX IF NOT EXISTS idx_ai_predictions_market ON ai_predictions(symbol,tf,created_at);
+CREATE TABLE IF NOT EXISTS whale_snapshots(symbol TEXT PRIMARY KEY, price REAL, volume24h REAL, change24h REAL, market_cap REAL, captured_at TEXT NOT NULL);
 `);
 app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : false);
 app.use(helmet({ contentSecurityPolicy: false }));
@@ -149,6 +150,32 @@ app.post('/api/ai-memory/snapshot',optionalAuth,async(req,res)=>{try{const symbo
 app.get('/api/ai-memory/summary',optionalAuth,async(req,res)=>{try{const symbol=String(req.query.symbol||'').toUpperCase(),tf=String(req.query.tf||'1h');if(!tfMap[tf]||!symbols[symbol])return res.status(400).json({error:'invalid_market'});const j=await getAnalysis(symbol,tf);const rows=db.prepare("SELECT * FROM ai_predictions WHERE symbol=? AND tf=? ORDER BY created_at DESC LIMIT 30").all(symbol,tf);aiMemoryEvaluate(rows,j.analysis?.price);const summary=aiMemorySummary(symbol,tf);if(req.user?.plan==='premium')return res.json({ok:true,premium:true,summary,history:db.prepare("SELECT id,symbol,tf,bias,entry,stop,tp1,tp2,created_at,resolved_at,status,outcome FROM ai_predictions WHERE symbol=? AND tf=? ORDER BY created_at DESC LIMIT 30").all(symbol,tf)});return res.json({ok:true,premium:false,summary:{total:summary.total,resolved:summary.resolved,wins:summary.wins,accuracy:summary.accuracy,pending:summary.pending,last:summary.last?{bias:summary.last.bias,created_at:summary.last.created_at,status:summary.last.status}:null}});}catch{res.status(503).json({error:'ai_memory_unavailable'});}});
 app.get('/api/ai-memory/history',auth,premium,async(req,res)=>{try{const symbol=String(req.query.symbol||'').toUpperCase(),tf=String(req.query.tf||'1h');const rows=db.prepare("SELECT id,symbol,tf,bias,entry,stop,tp1,tp2,created_at,resolved_at,status,outcome FROM ai_predictions WHERE symbol=? AND tf=? ORDER BY created_at DESC LIMIT 30").all(symbol,tf);res.json({ok:true,history:rows});}catch{res.status(503).json({error:'ai_memory_unavailable'});}});
 app.get('/api/trader-edge',async(req,res)=>{try{await refreshMarketUniverse();const results=[];const pairs=Object.keys(symbols).slice(0,80);await Promise.all(pairs.map(async pair=>{try{const [a,b,c]=await Promise.all(['15m','1h','4h'].map(tf=>getAnalysis(pair,tf)));const x=a.analysis,y=b.analysis,z=c.analysis;const trend=(Number(y.ema20||0)>Number(y.ema50||0)?1:-1)+(Number(z.ema20||0)>Number(z.ema50||0)?1:-1);const volume=Math.max(Number(a.volumeRatio||0),Number(y.volumeRatio||0));const directional=Math.round((Math.max(Number(a.bullScore||0),Number(a.bearScore||0))*.25)+(Math.max(Number(y.bullScore||0),Number(y.bearScore||0))*.45)+(Math.max(Number(z.bullScore||0),Number(z.bearScore||0))*.30));const edge=Math.round(Math.min(99,directional+(trend===2||trend===-2?8:0)+(volume>=1.5?8:volume>=1.2?4:0)));results.push({symbol:a.symbol,pair,price:y.price,edge,trend:trend>0?'UP':trend<0?'DOWN':'MIXED',volumeRatio:volume,rsi:y.rsi,support:y.support,resistance:y.resistance,setup:y.setup,risk:y.riskScore});}catch{}}));results.sort((a,b)=>b.edge-a.edge);res.json({ok:true,updatedAt:new Date().toISOString(),items:results.slice(0,8),method:'Multi-timeframe trend + momentum + volume + risk'});}catch{res.status(503).json({error:'trader_edge_unavailable'});}});
+function whaleSignal(x,prev){
+  const price=Number(x.price), vol=Number(x.volume24h), ch=Number(x.change24h||0), cap=Number(x.marketCap||0);
+  const pv=prev&&Number(prev.volume24h)>0?vol/Number(prev.volume24h):1;
+  const pp=prev&&Number(prev.price)>0?price/Number(prev.price)-1:0;
+  const volumeBoost=Math.max(0,Math.min(100,(pv-1)*100));
+  const priceImpulse=Math.max(0,Math.min(100,Math.abs(pp)*1000));
+  const liquidity=Math.max(0,Math.min(100,cap>0?(vol/cap)*100*8:0));
+  const score=Math.round(Math.min(99,35+volumeBoost*.35+priceImpulse*.35+liquidity*.30));
+  let direction='NEUTRAL',reason='No unusual large-flow proxy detected.';
+  if(ch>0.5&&pv>1.12){direction='ACCUMULATION_PROXY';reason='Rising price with elevated 24h volume suggests increased demand/large-flow activity.';}
+  else if(ch<-0.5&&pv>1.12){direction='DISTRIBUTION_PROXY';reason='Falling price with elevated 24h volume suggests increased selling/large-flow activity.';}
+  else if(pv>1.25){direction='LARGE_FLOW_PROXY';reason='24h volume is materially elevated versus the previous snapshot.';}
+  return {symbol:x.symbol,name:x.name,pair:x.pair,price,change24h:ch,volume24h:vol,marketCap:cap,volumeMultiple:Number(pv.toFixed(2)),priceMovePct:Number((pp*100).toFixed(3)),score,direction,reason,dataQuality:prev?'SNAPSHOT_COMPARISON':'BASELINE'};
+}
+app.get('/api/whale-intelligence',async(req,res)=>{try{
+  const all=await refreshMarketUniverse();
+  const now=new Date().toISOString();
+  const out=[];
+  const up=db.prepare('INSERT INTO whale_snapshots(symbol,price,volume24h,change24h,market_cap,captured_at) VALUES(?,?,?,?,?,?) ON CONFLICT(symbol) DO UPDATE SET price=excluded.price,volume24h=excluded.volume24h,change24h=excluded.change24h,market_cap=excluded.market_cap,captured_at=excluded.captured_at');
+  const get=db.prepare('SELECT * FROM whale_snapshots WHERE symbol=?').get;
+  const update= db.transaction((items)=>{for(const x of items){const prev=get.call(db,x.symbol);const sig=whaleSignal(x,prev);out.push(sig);up.run(x.symbol,x.price,x.volume24h,x.change24h,x.marketCap,now);}});
+  update(all.filter(x=>x.price!=null&&x.volume24h!=null));
+  out.sort((a,b)=>b.score-a.score);
+  const active=out.filter(x=>x.direction!=='NEUTRAL').slice(0,12);
+  res.json({ok:true,updatedAt:now,universe:all.length,engine:'CryptoPilot Whale Intelligence v1',method:'Free market-data flow proxy + snapshot comparison',disclaimer:'This is a whale-activity proxy, not proof of a specific wallet buying or selling. On-chain wallet attribution will be added when a professional provider is connected.',signals:active.length?active:out.slice(0,12),coverage:out.length});
+}catch(e){res.status(503).json({error:'whale_intelligence_unavailable'});}});
 app.get('/api/top-gainers',async(req,res)=>{try{const all=await refreshMarketUniverse();const ranked=all.filter(x=>Number.isFinite(Number(x.change24h))).sort((a,b)=>Number(b.change24h)-Number(a.change24h)).slice(0,8);res.json({ok:true,updatedAt:new Date().toISOString(),gainers:ranked});}catch{res.status(503).json({error:'gainers_unavailable'});}});
 app.get('/api/market-status',async(req,res)=>{const checks=await Promise.all(['BTCUSDT','ETHUSDT'].map(async p=>{try{const j=await getAnalysis(p,'15m');return{pair:p,provider:j.provider,updatedAt:j.updatedAt,online:true};}catch{return{pair:p,online:false};}}));res.json({ok:checks.some(x=>x.online),checkedAt:new Date().toISOString(),markets:checks});});
 app.get('/api/coins',async(req,res)=>{const q=String(req.query.q||'').toLowerCase().trim();const all=await refreshMarketUniverse();const list=all.filter(x=>!q||x.symbol.toLowerCase().includes(q)||String(x.name||'').toLowerCase().includes(q));res.json({updatedAt:new Date().toISOString(),coins:list,count:list.length,totalUniverse:500,universe:'CoinGecko top 500 by market cap',sort:'market_cap_desc'});});
