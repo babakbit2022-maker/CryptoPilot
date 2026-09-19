@@ -79,3 +79,7 @@ Automated repairs may change deterministic technical/infrastructure code and tes
 - Uses the existing live /api/top-gainers data, shows rank/symbol/price/24h change, duplicates the track for continuous looping, pauses on hover, and clicking a mover opens its market view.
 - Preserved the existing dashboard visual structure and did not change wallet/payment configuration.
 - VPS/browser verification remains required after deployment.
+
+
+## 2026-09-19 — VPS redeploy verification marker
+- Forced a fresh main-branch deployment after confirming the VPS deployment job previously started from an older repository state.
