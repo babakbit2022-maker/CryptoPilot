@@ -51,10 +51,51 @@ jobs:
             npm install -g pm2
             pm2 startOrRestart ecosystem.config.cjs --env production
             pm2 save
+
+            # Expose the Node app safely on HTTP through nginx.
+            # This only changes VPS networking; it does not touch app UI or payment configuration.
+            if ! command -v nginx >/dev/null 2>&1; then
+              apt-get update -y
+              DEBIAN_FRONTEND=noninteractive apt-get install -y nginx
+            fi
+            cat >/etc/nginx/sites-available/cryptopilot <<'NGINX'
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 120s;
+    }
+}
+NGINX
+            ln -sf /etc/nginx/sites-available/cryptopilot /etc/nginx/sites-enabled/cryptopilot
+            rm -f /etc/nginx/sites-enabled/default
+            nginx -t
+            systemctl enable nginx
+            systemctl restart nginx
+            if command -v ufw >/dev/null 2>&1; then
+              ufw allow 80/tcp || true
+              ufw allow 443/tcp || true
+            fi
+
             sleep 5
             if ! curl --fail --silent --show-error --max-time 20 http://127.0.0.1:3000/api/health; then
               echo "Health check failed; recent PM2 logs:"
               pm2 status || true
               pm2 logs cryptopilot --lines 80 --nostream || true
+              exit 1
+            fi
+            if ! curl --fail --silent --show-error --max-time 20 http://127.0.0.1/api/health; then
+              echo "Nginx reverse proxy health check failed"
+              systemctl status nginx --no-pager || true
+              nginx -t || true
               exit 1
             fi
