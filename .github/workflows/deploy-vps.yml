@@ -108,3 +108,14 @@ jobs:
               nginx -t || true
               exit 1
             fi
+
+      - name: Verify public VPS endpoint and latest ticker
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          set -e
+          echo "Checking public VPS endpoint"
+          curl --fail --silent --show-error --max-time 20 "http://$VPS_HOST/api/health"
+          echo
+          curl --fail --silent --show-error --max-time 20 "http://$VPS_HOST/" | grep -q "growthViewport"
+          echo "Public endpoint is serving the latest moving Highest Growth ticker."
