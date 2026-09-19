@@ -65,5 +65,5 @@ jobs:
             PY
             curl --fail --silent --show-error --max-time 15 http://127.0.0.1:3000/ -o /tmp/home.html
             grep -q 'Highest Growth Now' /tmp/home.html
-            grep -q "let p={premium:false,picks:[],performance:{available:false}" /tmp/home.html
+            grep -Fq "let p={premium:false,picks:[],performance:{available:false}" /tmp/home.html
             echo 'VPS GROWTH FIX TEST: PASS'
