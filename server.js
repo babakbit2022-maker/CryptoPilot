@@ -106,7 +106,7 @@ async function refreshMarketUniverse(){
   }
 }
 
-async function binanceKlines(symbol,interval,limit=250){const configured=(process.env.MARKET_BASE_URL||'').replace(/\/$/,'');const bases=[configured,'https://data-api.binance.vision','https://api-gcp.binance.com','https://api.binance.com','https://api1.binance.com','https://api2.binance.com','https://api3.binance.com','https://api4.binance.com'].filter((v,i,a)=>v&&!a.slice(0,i).includes(v));let last=null;for(const base of bases){try{const u=`${base}/api/v3/klines?symbol=${encodeURIComponent(symbol)}&interval=${interval}&limit=${limit}`;const r=await fetch(u,{headers:{accept:'application/json'},signal:AbortSignal.timeout(8000)});if(r.ok){const data=await r.json();if(Array.isArray(data)&&data.length)return data;}last=new Error('binance');}catch(e){last=e;}}throw last||new Error('binance');}
+async function binanceKlines(symbol,interval,limit=250){const configured=(process.env.MARKET_BASE_URL||'').replace(/\/$/,'');const bases=[configured,'https://data-api.binance.vision'].filter((v,i,a)=>v&&!a.slice(0,i).includes(v));let last=null;for(const base of bases){try{const u=`${base}/api/v3/klines?symbol=${encodeURIComponent(symbol)}&interval=${interval}&limit=${limit}`;const r=await fetch(u,{headers:{accept:'application/json'},signal:AbortSignal.timeout(3500)});if(r.ok){const data=await r.json();if(Array.isArray(data)&&data.length)return data;}last=new Error('binance');}catch(e){last=e;}}throw last||new Error('binance');}
 function providerInterval(tf){return {'1m':60,'15m':900,'1h':3600,'4h':21600,'1d':86400}[tf]||900;}
 async function coinbaseKlines(symbol,tf,limit=250){const base=symbol.replace(/USDT$/,'')+'-USD';const g=providerInterval(tf);const end=Math.floor(Date.now()/1000),start=end-g*limit;const u=`https://api.exchange.coinbase.com/products/${encodeURIComponent(base)}/candles?granularity=${g}&start=${new Date(start*1000).toISOString()}&end=${new Date(end*1000).toISOString()}`;const r=await fetch(u,{headers:{accept:'application/json'},signal:AbortSignal.timeout(8000)});if(!r.ok)throw new Error('coinbase');const data=await r.json();if(!Array.isArray(data)||!data.length)throw new Error('coinbase');return data.reverse().map(x=>[Number(x[0])*1000,Number(x[3]),Number(x[2]),Number(x[1]),Number(x[4]),Number(x[5])]);}
 async function krakenKlines(symbol,tf,limit=250){const map={BTCUSDT:'XBTUSD',ETHUSDT:'ETHUSD',SOLUSDT:'SOLUSD',XRPUSDT:'XRPUSD',DOGEUSDT:'DOGEUSD',ADAUSDT:'ADAUSD',AVAXUSDT:'AVAXUSD',LINKUSDT:'LINKUSD',DOTUSDT:'DOTUSD',LTCUSDT:'LTCUSD',TRXUSDT:'TRXUSD'};const pair=map[symbol]||symbol.replace(/USDT$/,'')+'USD';const interval={'1m':1,'15m':15,'1h':60,'4h':240,'1d':1440}[tf]||15;const u=`https://api.kraken.com/0/public/OHLC?pair=${encodeURIComponent(pair)}&interval=${interval}`;const r=await fetch(u,{headers:{accept:'application/json'},signal:AbortSignal.timeout(8000)});if(!r.ok)throw new Error('kraken');const j=await r.json();const key=Object.keys(j.result||{}).find(k=>k!=='last');const data=key?j.result[key]:[];if(!data.length)throw new Error('kraken');return data.slice(-limit).map(x=>[Number(x[0])*1000,Number(x[1]),Number(x[2]),Number(x[3]),Number(x[4]),Number(x[6])]);}
@@ -121,9 +121,9 @@ async function getAnalysis(pair,tf){
   if(c&&now-c.t<10000)return c.v;
   const providers=[
     ['coingecko',()=>geckoKlines(symbols[pair],tf,250)],
-    ['binance',()=>binanceKlines(pair,tf,250)],
+    ['kraken',()=>krakenKlines(pair,tf,250)],
     ['coinbase',()=>coinbaseKlines(pair,tf,250)],
-    ['kraken',()=>krakenKlines(pair,tf,250)]
+    ...(process.env.ENABLE_BINANCE_FALLBACK==='true'?[['binance',()=>binanceKlines(pair,tf,250)]]:[])
   ];
   for(const [provider,load] of providers){
     try{
