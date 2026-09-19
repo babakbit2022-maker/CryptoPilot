@@ -51,3 +51,14 @@ Automated repairs may change deterministic technical/infrastructure code and tes
 - payment secrets
 - visual design/branding/layout unless Babak explicitly approves it
 - public payment wording/address configuration
+
+## 2026-09-19 — Restore requested dashboard layout
+
+- User-requested visual structure restored on `main` without changing the payment wallet/address or protected payment configuration.
+- New dashboard order: Highest Growth banner → full top-500 market universe → 15 assets per page pagination → CryptoPilot tools → existing risk/scanner/system intelligence.
+- Market list is now paginated at exactly 15 assets per page with numbered pages, Prev/Next controls, rank numbers, live price, 24h change, Risk and Bull fields, and search-aware pagination.
+- Added a dedicated `CryptoPilot Tools` area below the market list so users can choose AI Chart Analysis, Live Trading Chart, Market Scanner, or Premium/Account.
+- Preserved the existing live `/api/coins`, `/api/top-gainers`, scanner, chart navigation, and Daily AI Picks data flows.
+- Fixed the dashboard error fallback so it no longer targets the removed stale `#coins` element.
+- Commit: `b470ec07d8b602938777a96c12ef1070fd925be3`.
+- Verification still required after VPS deployment: browser-level check of 500-coin pagination, search, banner, tool links, and mobile layout.
