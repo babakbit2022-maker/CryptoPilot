@@ -22,6 +22,9 @@ CREATE TABLE IF NOT EXISTS payments(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id
 CREATE TABLE IF NOT EXISTS audit_log(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER,action TEXT NOT NULL,meta TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS ai_predictions(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER,symbol TEXT NOT NULL,tf TEXT NOT NULL,bias TEXT NOT NULL,entry REAL,stop REAL,tp1 REAL,tp2 REAL,created_at TEXT DEFAULT CURRENT_TIMESTAMP,resolved_at TEXT,status TEXT NOT NULL DEFAULT 'pending',outcome TEXT,source TEXT DEFAULT 'live',FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL);
 CREATE INDEX IF NOT EXISTS idx_ai_predictions_market ON ai_predictions(symbol,tf,created_at);
+CREATE TABLE IF NOT EXISTS daily_pick_runs(id INTEGER PRIMARY KEY AUTOINCREMENT,run_date TEXT UNIQUE NOT NULL,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS daily_pick_items(id INTEGER PRIMARY KEY AUTOINCREMENT,run_id INTEGER NOT NULL,symbol TEXT NOT NULL,rank INTEGER NOT NULL,entry_price REAL NOT NULL,score REAL,confidence TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(run_id) REFERENCES daily_pick_runs(id) ON DELETE CASCADE);
+CREATE INDEX IF NOT EXISTS idx_daily_pick_items_run ON daily_pick_items(run_id,rank);
 `);
 app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : false);
 app.use(helmet({ contentSecurityPolicy: false }));
@@ -167,9 +170,102 @@ async function checkAlerts(){const alerts=db.prepare('SELECT * FROM alerts WHERE
 setInterval(()=>checkAlerts().catch(()=>{}),30000);
 app.post('/api/ai/analyze',auth,aiLimit,premium,async(req,res)=>{if(!process.env.OPENAI_API_KEY)return res.status(503).json({error:'ai_not_configured'});const symbol=String(req.body?.symbol||''),context=String(req.body?.context||'').slice(0,12000);try{const r=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.OPENAI_API_KEY}`},body:JSON.stringify({model:process.env.OPENAI_MODEL||'gpt-5.6-luna',input:`You are CryptoPilot AI's educational crypto market analyst. Analyze only the supplied market data. Explain trend, momentum, volatility, volume, support/resistance and risks. Never guarantee returns. Do not present certainty or personalized financial advice. Symbol: ${symbol}. Data: ${context}`}),signal:AbortSignal.timeout(20000)});if(!r.ok)throw new Error('ai');const j=await r.json();res.json({answer:j.output_text||'No analysis returned.'});}catch{res.status(503).json({error:'ai_unavailable'});}});
 let dailyPickCache={t:0,data:null,running:false};
-async function computeDailyPicks(){if(dailyPickCache.running)return dailyPickCache.data;dailyPickCache.running=true;try{await refreshMarketUniverse();const tfs=['15m','1h','4h'];const by=new Map();await Promise.all(tfs.map(async tf=>{const batch=Object.keys(symbols).slice(0,60);await Promise.all(batch.map(async pair=>{try{const j=await getAnalysis(pair,tf),a=j.analysis;if(!a||!Number.isFinite(a.price))return;const old=by.get(j.symbol)||{symbol:j.symbol,pair,price:a.price,score:0,tfCount:0,signals:[]};const directional=Math.max(Number(a.bullScore||0),Number(a.bearScore||0));const momentum=Math.max(-1,Math.min(1,Number(a.momentum||0)));const volume=Math.max(0,Math.min(2,Number(a.volumeRatio||0)-1));const trend=(Number(a.ema20||0)>Number(a.ema50||0)?1:-1)+(Number(a.ema50||0)>Number(a.ema200||0)?1:-1);old.score+=(directional*.55)+(Math.max(0,momentum)*18)+(volume*8)+(trend*4);old.tfCount++;old.price=a.price;old.signals.push({tf,bull:a.bullScore,bear:a.bearScore,rsi:a.rsi,volumeRatio:a.volumeRatio,setup:a.setup});by.set(j.symbol,old);}catch{}}));}));const picks=[...by.values()].filter(x=>x.tfCount>=2).sort((a,b)=>b.score-a.score).slice(0,5).map((x,i)=>({...x,rank:i+1,score:Math.round(Math.min(99,x.score/x.tfCount)),confidence:x.tfCount>=3?'multi-timeframe':'multi-signal'}));dailyPickCache={t:Date.now(),data:{ok:true,updatedAt:new Date().toISOString(),picks,disclaimer:'Research-only signals. No pump or profit is guaranteed.'},running:false};return dailyPickCache.data;}catch{dailyPickCache.running=false;return dailyPickCache.data;}}
-app.get('/api/daily-picks',async(req,res)=>{const fresh=dailyPickCache.data&&Date.now()-dailyPickCache.t<5*60*1000;if(!fresh)await computeDailyPicks();if(dailyPickCache.data)return res.json(dailyPickCache.data);res.status(503).json({error:'daily_picks_unavailable'});});
-setTimeout(()=>computeDailyPicks().catch(()=>{}),5000);setInterval(()=>computeDailyPicks().catch(()=>{}),5*60*1000);
+
+function utcDateKey(d=new Date()){return d.toISOString().slice(0,10);}
+async function getCurrentPrice(symbol){
+  try{
+    const pair=symbol+'USDT';
+    const j=await getAnalysis(pair,'1h');
+    return Number(j.analysis?.price);
+  }catch{return null;}
+}
+async function recordDailyPickRun(picks){
+  const runDate=utcDateKey();
+  let run=db.prepare('SELECT id FROM daily_pick_runs WHERE run_date=?').get(runDate);
+  if(!run){
+    const tx=db.transaction(items=>{
+      const r=db.prepare('INSERT INTO daily_pick_runs(run_date) VALUES(?)').run(runDate);
+      for(const x of items){
+        if(Number.isFinite(Number(x.price))) db.prepare('INSERT INTO daily_pick_items(run_id,symbol,rank,entry_price,score,confidence) VALUES(?,?,?,?,?,?)').run(r.lastInsertRowid,x.symbol,x.rank,x.price,x.score,x.confidence);
+      }
+      return r.lastInsertRowid;
+    });
+    run={id:tx(picks)};
+  }
+  return run.id;
+}
+async function getDailyPerformance(daysAgo=1){
+  const target=new Date(Date.now()-daysAgo*86400000);
+  const date=utcDateKey(target);
+  const run=db.prepare('SELECT id,run_date,created_at FROM daily_pick_runs WHERE run_date=?').get(date);
+  if(!run)return {available:false,date,reason:'history_not_collected'};
+  const items=db.prepare('SELECT symbol,rank,entry_price,score,confidence FROM daily_pick_items WHERE run_id=? ORDER BY rank').all(run.id);
+  const results=[];
+  for(const x of items){
+    const price=await getCurrentPrice(x.symbol);
+    const change=Number.isFinite(price)&&Number(x.entry_price)>0 ? ((price-Number(x.entry_price))/Number(x.entry_price))*100 : null;
+    results.push({...x,current_price:price,change24hSincePick:change});
+  }
+  const valid=results.filter(x=>Number.isFinite(x.change24hSincePick));
+  const avg=valid.length?valid.reduce((a,x)=>a+x.change24hSincePick,0)/valid.length:null;
+  const positive=valid.filter(x=>x.change24hSincePick>0).length;
+  return {available:true,date,picks:results,averageReturn:avg,positiveCount:positive,totalCount:valid.length,method:'Equal-weight price change from recorded daily pick entry; excludes fees/slippage.'};
+}
+
+async function computeDailyPicks(){
+  if(dailyPickCache.running)return dailyPickCache.data;
+  dailyPickCache.running=true;
+  try{
+    await refreshMarketUniverse();
+    const tfs=['15m','1h','4h']; const by=new Map();
+    await Promise.all(tfs.map(async tf=>{
+      const batch=Object.keys(symbols).slice(0,60);
+      await Promise.all(batch.map(async pair=>{
+        try{
+          const j=await getAnalysis(pair,tf),a=j.analysis;if(!a||!Number.isFinite(a.price))return;
+          const old=by.get(j.symbol)||{symbol:j.symbol,pair,price:a.price,score:0,tfCount:0,signals:[]};
+          const directional=Math.max(Number(a.bullScore||0),Number(a.bearScore||0));
+          const momentum=Math.max(-1,Math.min(1,Number(a.momentum||0)));
+          const volume=Math.max(0,Math.min(2,Number(a.volumeRatio||0)-1));
+          const trend=(Number(a.ema20||0)>Number(a.ema50||0)?1:-1)+(Number(a.ema50||0)>Number(a.ema200||0)?1:-1);
+          old.score+=(directional*.55)+(Math.max(0,momentum)*18)+(volume*8)+(trend*4);
+          old.tfCount++;old.price=a.price;
+          old.signals.push({tf,bull:a.bullScore,bear:a.bearScore,rsi:a.rsi,volumeRatio:a.volumeRatio,setup:a.setup});
+          by.set(j.symbol,old);
+        }catch{}
+      }));
+    }));
+    const picks=[...by.values()].filter(x=>x.tfCount>=2).sort((a,b)=>b.score-a.score).slice(0,5).map((x,i)=>({...x,rank:i+1,score:Math.round(Math.min(99,x.score/x.tfCount)),confidence:x.tfCount>=3?'multi-timeframe':'multi-signal'}));
+    await recordDailyPickRun(picks);
+    const performance=await getDailyPerformance(1);
+    dailyPickCache={t:Date.now(),data:{ok:true,updatedAt:new Date().toISOString(),picks,performance,disclaimer:'Research-only signals. No pump or profit is guaranteed.'},running:false};
+    return dailyPickCache.data;
+  }catch{
+    dailyPickCache.running=false;
+    return dailyPickCache.data;
+  }
+}
+
+app.get('/api/daily-picks',optionalAuth,async(req,res)=>{
+  const fresh=dailyPickCache.data&&Date.now()-dailyPickCache.t<5*60*1000;
+  if(!fresh)await computeDailyPicks();
+  if(!dailyPickCache.data)return res.status(503).json({error:'daily_picks_unavailable'});
+  const d=dailyPickCache.data;
+  const isPremium=req.user?.plan==='premium';
+  res.json({
+    ok:true,updatedAt:d.updatedAt,
+    premium:isPremium,
+    picks:isPremium?d.picks:d.picks.map(x=>({rank:x.rank,confidence:x.confidence,score:x.score,locked:true})),
+    performance:d.performance,
+    disclaimer:d.disclaimer
+  });
+});
+app.get('/api/daily-picks/history',auth,premium,async(req,res)=>{
+  try{res.json({ok:true,performance:await getDailyPerformance(Number(req.query.daysAgo||1))});}
+  catch{res.status(503).json({error:'daily_pick_history_unavailable'});}
+});
+setTimeout(()=>computeDailyPicks().catch(()=>{}),5000);
+setInterval(()=>computeDailyPicks().catch(()=>{}),5*60*1000);
 app.get('/api/admin/overview',auth,(req,res)=>{if(req.user.role!=='admin')return res.status(403).json({error:'forbidden'});res.json({users:db.prepare('SELECT COUNT(*) c FROM users').get().c,premium:db.prepare("SELECT COUNT(*) c FROM users WHERE plan='premium'").get().c,alerts:db.prepare('SELECT COUNT(*) c FROM alerts WHERE active=1').get().c,payments:db.prepare('SELECT COUNT(*) c FROM payments').get().c});});
 app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:'internal_error'});});
 app.listen(port,'0.0.0.0',()=>console.log(`CryptoPilot AI 2.7.0 listening on ${port}`));
