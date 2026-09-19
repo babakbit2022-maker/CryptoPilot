@@ -83,3 +83,6 @@ Automated repairs may change deterministic technical/infrastructure code and tes
 
 ## 2026-09-19 — VPS redeploy verification marker
 - Forced a fresh main-branch deployment after confirming the VPS deployment job previously started from an older repository state.
+
+
+- 2026-09-19: VPS public HTTP exposure fix queued; nginx reverse proxy is now part of the VPS deployment workflow.
