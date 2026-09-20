@@ -210,6 +210,112 @@ app.get('/api/ai/market-intelligence',async(req,res)=>{try{const symbol=String(r
 
 app.get('/api/market/:symbol',async(req,res)=>{const symbol=String(req.params.symbol||'').toUpperCase(),tf=String(req.query.tf||'15m');if(!tfMap[tf])return res.status(400).json({error:'unsupported_tf'});if(!symbols[symbol]){await refreshMarketUniverse();}if(!symbols[symbol])return res.status(400).json({error:'unsupported_market'});try{res.json(await getAnalysis(symbol,tf));}catch{res.status(503).json({error:'market_unavailable'});}});
 app.get('/api/scanner',async(req,res)=>{const tf=String(req.query.tf||'15m');if(!tfMap[tf])return res.status(400).json({error:'unsupported_tf'});await refreshMarketUniverse();const results=[];await Promise.all(Object.keys(symbols).slice(0,100).map(async pair=>{try{const j=await getAnalysis(pair,tf),a=j.analysis;results.push({symbol:j.symbol,pair,price:a.price,bullScore:a.bullScore,bearScore:a.bearScore,riskScore:a.riskScore,setup:a.setup,rsi:a.rsi,momentum:a.momentum,volumeRatio:a.volumeRatio,provider:j.provider});}catch{}}));results.sort((a,b)=>Math.max(b.bullScore,b.bearScore)-Math.max(a.bullScore,a.bearScore));res.json({tf,updatedAt:new Date().toISOString(),results,count:results.length});});
+
+// Premium payment configuration and on-chain verification.
+const TRON_USDT_CONTRACT='TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
+function paymentConfig(){
+  const wallet=String(process.env.PAYMENT_WALLET||process.env.USDT_TRC20_WALLET||process.env.TRC20_WALLET||'').trim();
+  const amount=Number(process.env.PREMIUM_PRICE_USDT||process.env.PAYMENT_AMOUNT_USDT||process.env.PREMIUM_PRICE||'');
+  if(!wallet||!Number.isFinite(amount)||amount<=0)return null;
+  return {wallet,amount,network:'TRC20',asset:'USDT',contract:TRON_USDT_CONTRACT,decimals:6};
+}
+function validTxid(txid){return /^[a-fA-F0-9]{64}$/.test(String(txid||''));}
+async function fetchJson(url,headers={}){
+  const r=await fetch(url,{headers:{accept:'application/json',...headers},signal:AbortSignal.timeout(12000)});
+  if(!r.ok)throw new Error('provider_http_'+r.status);
+  return r.json();
+}
+async function inspectPaymentTx(txid,cfg){
+  const apiKey=String(process.env.TRONSCAN_API_KEY||process.env.TRON_PRO_API_KEY||'').trim();
+  const headers=apiKey?{'TRON-PRO-API-KEY':apiKey}:{};
+  const providers=[
+    async()=>fetchJson('https://apilist.tronscanapi.com/api/transaction-info?hash='+encodeURIComponent(txid),headers),
+    async()=>fetchJson('https://api.trongrid.io/v1/transactions/'+encodeURIComponent(txid)+'/events?only_confirmed=true',process.env.TRONGRID_API_KEY?{'TRON-PRO-API-KEY':process.env.TRONGRID_API_KEY}:{}),
+  ];
+  let last=null;
+  for(const get of providers){
+    try{
+      const j=await get();
+      if(j?.trc20TransferInfo||j?.transfersAllList||j?.tokenTransferInfo){
+        const transfers=[...(j.trc20TransferInfo||[]),...(j.transfersAllList||[])];
+        if(j.tokenTransferInfo)transfers.push(j.tokenTransferInfo);
+        const t=transfers.find(x=>String(x.symbol||'').toUpperCase()==='USDT'&&String(x.contract_address||'')===cfg.contract&&String(x.to_address||'')===cfg.wallet&&String(x.type||'Transfer').toLowerCase()==='transfer');
+        if(!t)return {status:'payment_mismatch',provider:'tronscan',confirmed:Boolean(j.confirmed),reverted:Boolean(j.revert),txid};
+        const decimals=Number(t.decimals??cfg.decimals);
+        const rawAmount=Number(t.amount_str);
+        const amount=rawAmount/10**decimals;
+        if(!j.confirmed||j.revert||String(j.contractRet||'').toUpperCase()!=='SUCCESS'||Number(t.status||0)!==0)return {status:'pending',provider:'tronscan',confirmed:Boolean(j.confirmed),txid,amount};
+        return {status:Math.abs(amount-cfg.amount)<1e-9?'confirmed':'payment_mismatch',provider:'tronscan',confirmed:true,txid,amount};
+      }
+      const events=Array.isArray(j?.data)?j.data:[];
+      const t=events.find(x=>String(x.event_name||x.eventName||'').toLowerCase()==='transfer');
+      if(t){
+        const v=t.result||t;
+        const to=String(v.to||v._to||''); const contract=String(t.contract_address||v.contract_address||'');
+        const raw=Number(v.value??v._value??v.amount??0); const amount=raw/1e6;
+        if(to===cfg.wallet&&contract===cfg.contract)return {status:Math.abs(amount-cfg.amount)<1e-9?'confirmed':'payment_mismatch',provider:'trongrid',confirmed:true,txid,amount};
+      }
+      last=new Error('tx_not_found');
+    }catch(e){last=e;}
+  }
+  if(last?.message==='tx_not_found')return {status:'payment_mismatch',txid};
+  throw new Error('verification_unavailable');
+}
+app.get('/api/payment/config',(req,res)=>{
+  const cfg=paymentConfig();
+  if(!cfg)return res.status(503).json({error:'payment_not_configured'});
+  res.json({ok:true,amount:cfg.amount,network:cfg.network,asset:cfg.asset,wallet:cfg.wallet,contract:cfg.contract,decimals:cfg.decimals});
+});
+app.get('/api/payment/verification-engine',(req,res)=>{
+  const cfg=paymentConfig();
+  res.json({ok:Boolean(cfg),automatic:Boolean(cfg),provider:'TRONSCAN + TronGrid',network:'TRC20',asset:'USDT'});
+});
+async function verifyPaymentForUser(req,txid){
+  const cfg=paymentConfig();
+  if(!cfg)throw Object.assign(new Error('payment_not_configured'),{code:'payment_not_configured'});
+  if(!validTxid(txid))throw Object.assign(new Error('invalid_txid'),{code:'invalid_txid'});
+  const existing=db.prepare('SELECT * FROM payments WHERE event_id=?').get(txid);
+  if(existing&&Number(existing.user_id)!==Number(req.user.id))throw Object.assign(new Error('txid_already_claimed'),{code:'txid_already_claimed'});
+  const result=await inspectPaymentTx(txid,cfg);
+  if(result.status==='confirmed'){
+    const amountRaw=Math.round(cfg.amount*10**cfg.decimals);
+    db.prepare("INSERT INTO payments(user_id,event_id,provider,status,amount,currency,authority) VALUES(?,?,?,?,?,?,?) ON CONFLICT(event_id) DO UPDATE SET status=excluded.status,amount=excluded.amount,currency=excluded.currency,authority=excluded.authority").run(req.user.id,txid,result.provider,'confirmed',amountRaw,'USDT',cfg.wallet);
+    db.prepare("UPDATE users SET plan='premium' WHERE id=?").run(req.user.id);
+    audit(req.user.id,'premium_payment_confirmed',{txid,amount:cfg.amount,network:'TRC20'});
+    return {status:'confirmed',amount:cfg.amount,network:'TRC20',txid};
+  }
+  const st=result.status==='pending'?'pending':'mismatch';
+  db.prepare("INSERT INTO payments(user_id,event_id,provider,status,amount,currency,authority) VALUES(?,?,?,?,?,?,?) ON CONFLICT(event_id) DO UPDATE SET status=excluded.status,provider=excluded.provider").run(req.user.id,txid,result.provider||'tronscan',st,Math.round(cfg.amount*10**cfg.decimals),'USDT',cfg.wallet);
+  return {status:st,txid,amount:result.amount??null};
+}
+app.post('/api/payment/submit',auth,async(req,res)=>{
+  try{
+    const txid=String(req.body?.txid||'').trim();
+    if(!validTxid(txid))return res.status(400).json({error:'invalid_txid'});
+    const r=await verifyPaymentForUser(req,txid);
+    res.json({ok:true,...r});
+  }catch(e){
+    const code=e?.code||e?.message;
+    if(code==='txid_already_claimed')return res.status(409).json({error:code});
+    if(code==='payment_not_configured')return res.status(503).json({error:code});
+    if(code==='verification_unavailable')return res.status(503).json({error:code});
+    res.status(400).json({error:code||'payment_verification_failed'});
+  }
+});
+app.post('/api/payment/verify',auth,async(req,res)=>{
+  try{
+    const txid=String(req.body?.txid||'').trim();
+    if(!validTxid(txid))return res.status(400).json({error:'invalid_txid'});
+    const r=await verifyPaymentForUser(req,txid);
+    res.json({ok:true,...r});
+  }catch(e){
+    const code=e?.code||e?.message;
+    if(code==='txid_already_claimed')return res.status(409).json({error:code});
+    if(code==='payment_not_configured'||code==='verification_unavailable')return res.status(503).json({error:code});
+    res.status(400).json({error:code||'payment_verification_failed'});
+  }
+});
+
 app.get('/robots.txt',(req,res)=>{const base=process.env.PUBLIC_BASE_URL||`${req.protocol}://${req.get('host')}`;res.type('text/plain').send(`User-agent: *\nAllow: /\nSitemap: ${base}/sitemap.xml\n`);});
 app.get('/sitemap.xml',(req,res)=>{const base=(process.env.PUBLIC_BASE_URL||`${req.protocol}://${req.get('host')}`).replace(/\/$/,'');const slugs=['bitcoin','ethereum','solana','binance-coin','xrp','dogecoin','cardano','avalanche','chainlink','polkadot','litecoin','tron'];const urls=['/','/market-analysis','/ai-crypto-chart-analysis',...slugs.map(s=>`/crypto/${s}`)];res.type('application/xml').send(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls.map(u=>`<url><loc>${base}${u}</loc><changefreq>${u==='/'?'daily':'hourly'}</changefreq><priority>${u==='/'?'1.0':'0.8'}</priority></url>`).join('')}</urlset>`);});
 app.get(['/market-analysis','/ai-crypto-chart-analysis'],(req,res)=>res.sendFile('index.html',{root:'public'}));
