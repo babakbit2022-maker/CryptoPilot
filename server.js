@@ -370,6 +370,19 @@ async function buildChartAiAnalysis(pair,tf){
   }
   if(!reports.length){
     try{
+      const u='https://pro-api.coinmarketcap.com/public-api/v2/simple/price?symbol='+encodeURIComponent(symbol)+'&convert=USD&skip_invalid=true';
+      const r=await marketFetch(u,{headers:{accept:'application/json'},signal:AbortSignal.timeout(6000)});
+      if(r.ok){
+        const j=await r.json(),q=j?.data?.[0]?.quotes?.find(x=>x.symbol==='USD'),price=Number(q?.price);
+        if(Number.isFinite(price)){
+          const ch=Number(q?.percent_change_24h||0);
+          reports.push({tf:'1h',provider:'CoinMarketCap live snapshot',analysis:{price,rsi:null,ema20:null,ema50:null,ema200:null,atr:null,momentum:ch/100,support:null,resistance:null,bullScore:ch>=0?60:40,bearScore:ch<0?60:40,riskScore:50,setup:'MARKET_SNAPSHOT',tradeLevels:{long:null,short:null}}});
+        }
+      }
+    }catch{}
+  }
+  if(!reports.length){
+    try{
       const searchUrl='https://api.coingecko.com/api/v3/search?query='+encodeURIComponent(symbol);
       const sr=await marketFetch(searchUrl,{headers:{accept:'application/json'},signal:AbortSignal.timeout(7000)});
       if(!sr.ok)throw Error('coingecko_search');
