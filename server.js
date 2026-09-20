@@ -98,7 +98,6 @@ async function refreshMarketUniverse(){
 async function refreshMarketUniverseFresh(){
   const now=Date.now();
   if(universeInflight)return universeInflight;
-  universeInflight=(async()=>{
   universeInflight=(async()=>{try{
     const cgPages=await Promise.all([1,2].map(async page=>{const u='https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page='+page+'&sparkline=false&price_change_percentage=24h';const r=await marketFetch(u,{headers:{accept:'application/json'},signal:AbortSignal.timeout(10000)});if(!r.ok)throw new Error('coingecko universe');return r.json();}));
     const cg={ok:true,json:async()=>cgPages.flat()};
@@ -131,8 +130,8 @@ async function refreshMarketUniverseFresh(){
     const fallback=Object.entries(symbols).map(([pair,symbol])=>{const m=symbolMeta.get(pair)||{};return {pair,symbol,name:m.name||symbol,image:m.image||null,marketCap:m.marketCap||0,marketCapRank:m.marketCapRank||null,change24h:null,price:null,volume24h:null,circulatingSupply:null,totalSupply:null,maxSupply:null,chartable:true};});
     cache.set('__universe',{t:now,v:fallback});
     return fallback;
-  }finally{universeInflight=null;}}
-  )();
+  }finally{universeInflight=null;}
+  })();
   return universeInflight;
 }
 
