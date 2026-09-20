@@ -502,7 +502,7 @@ app.post('/api/ai/ask',optionalAuth,aiLimit,async(req,res)=>{
       const rr=await fetch('https://1xai.ir/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+process.env.OPENAI_API_KEY},body:JSON.stringify({model:process.env.OPENAI_MODEL||'gpt-5.6-luna',messages:[{role:'user',content:prompt}]}),signal:AbortSignal.timeout(20000)});
       if(rr.ok){const j=await rr.json();return res.json({ok:true,source:'1xai',symbol:v.symbol,asOf:new Date().toISOString(),answer:j.output_text||buildAiQuestionAnswer(question,v)});}
       }
-    }}catch{}
+    }catch{}
     res.json({ok:true,source:'technical-engine',symbol:v.symbol,asOf:new Date().toISOString(),answer:buildAiQuestionAnswer(question,v)});
   }catch{res.status(503).json({error:'ai_question_unavailable'});}
 });
