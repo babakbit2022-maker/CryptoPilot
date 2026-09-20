@@ -86,8 +86,19 @@ let universeInflight=null;
 async function refreshMarketUniverse(){
   const now=Date.now();
   const cached=cache.get('__universe');
-  if(cached&&now-cached.t<60*1000)return cached.v;
+  // Serve cached market data immediately on page load. If stale, refresh in the background
+  // so the dashboard never waits on the external provider before rendering.
+  if(cached){
+    if(now-cached.t<60*1000)return cached.v;
+    if(!universeInflight){ refreshMarketUniverseFresh().catch(()=>{}); }
+    return cached.v;
+  }
+  return refreshMarketUniverseFresh();
+}
+async function refreshMarketUniverseFresh(){
+  const now=Date.now();
   if(universeInflight)return universeInflight;
+  universeInflight=(async()=>{
   universeInflight=(async()=>{try{
     const cgPages=await Promise.all([1,2].map(async page=>{const u='https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page='+page+'&sparkline=false&price_change_percentage=24h';const r=await marketFetch(u,{headers:{accept:'application/json'},signal:AbortSignal.timeout(10000)});if(!r.ok)throw new Error('coingecko universe');return r.json();}));
     const cg={ok:true,json:async()=>cgPages.flat()};
