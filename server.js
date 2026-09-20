@@ -381,9 +381,46 @@ ${JSON.stringify(payload)}`;
   }
   const bull=Number(primary.bullScore||0),bear=Number(primary.bearScore||0),risk=Number(primary.riskScore||50);
   const trend=bull>bear+8?'متمایل به صعود':bear>bull+8?'متمایل به نزول':'خنثی / نیازمند تأیید';
-  const confirmation=primary.resistance!=null?`برای ادامه صعود، تثبیت بالای مقاومت ${primary.resistance} و حفظ حجم مهم است؛ شکست حمایت ${primary.support} سناریوی صعودی را تضعیف می‌کند.`:'برای تأیید حرکت، شکست سطح کلیدی همراه با حجم باید بررسی شود.';
-  const report=`1) جایگاه ارز و کاربرد واقعی\n${profile.sector}. ${profile.use}\n\n2) وضعیت فعلی روی چارت\nروند فعلی ${trend} است. RSI ${primary.rsi==null?'در دسترس نیست':Number(primary.rsi).toFixed(1)}، نسبت حجم ${primary.volumeRatio==null?'نامشخص':Number(primary.volumeRatio).toFixed(2)+'x'} و ریسک ${risk}/100 است. ساختار EMA20/EMA50/EMA200 و مومنتوم باید در کنار هم خوانده شوند.\n\n3) چه چیزی به نفع رشد است\nحفظ قیمت بالای حمایت، بهبود مومنتوم و افزایش حجم تأییدکننده می‌تواند احتمال ادامه حرکت را تقویت کند.\n\n4) چه چیزی خطر سقوط را بالا می‌برد\nاز دست رفتن حمایت ${primary.support??'کلیدی'}، افزایش نوسان و حجم فروش، یا واگرایی بین تایم‌فریم‌های کوتاه و بلندمدت هشدار محسوب می‌شود.\n\n5) سناریوی صعودی\nدر صورت عبور و تثبیت بالای مقاومت ${primary.resistance??'کلیدی'} با حجم مناسب، هدف بعدی باید بر اساس ساختار مقاومت بعدی و ATR ارزیابی شود.\n\n6) سناریوی نزولی\nدر صورت شکست حمایت ${primary.support??'کلیدی'} و تأیید در تایم‌فریم بالاتر، فشار فروش می‌تواند افزایش یابد؛ این به معنی پیش‌بینی قطعی سقوط نیست.\n\n7) سطوح مهم و شرط تأیید\n${confirmation}\n\n8) جمع‌بندی هوشمند\nاین گزارش از داده زنده تکنیکال ساخته شده و برای تصمیم‌گیری قطعی یا تضمین سود نیست.`;
-  const v={source:'technical-fallback',symbol,name:meta.name||symbol,sector:profile.sector,useCase:profile.use,drivers:profile.drivers,updatedAt:new Date().toISOString(),analysis:primary,report};
+  const fmt=(v,d=2)=>Number.isFinite(Number(v))?Number(v).toLocaleString('en-US',{maximumFractionDigits:d}):'نامشخص';
+  const tfRows=reports.map(x=>({tf:x.tf,a:x.analysis||{}}));
+  const tfBias=a=>Number(a.bullScore||0)>Number(a.bearScore||0)+8?'صعودی':Number(a.bearScore||0)>Number(a.bullScore||0)+8?'نزولی':'خنثی';
+  const tfSummary=tfRows.map(x=>`${x.tf}: ${tfBias(x.a)} | RSI ${fmt(x.a.rsi,1)} | مومنتوم ${Number.isFinite(Number(x.a.momentum))?(Number(x.a.momentum)*100).toFixed(2)+'%':'نامشخص'} | حجم ${fmt(x.a.volumeRatio,2)}x`).join('؛ ');
+  const bullishTfs=tfRows.filter(x=>tfBias(x.a)==='صعودی').length;
+  const bearishTfs=tfRows.filter(x=>tfBias(x.a)==='نزولی').length;
+  const alignment=bullishTfs>bearishTfs?'غلبه با تایم‌فریم‌های صعودی است':bearishTfs>bullishTfs?'غلبه با تایم‌فریم‌های نزولی است':'تایم‌فریم‌ها اجماع روشنی ندارند';
+  const emaState=primary.ema20&&primary.ema50
+    ? (primary.price>primary.ema20&&primary.ema20>primary.ema50?'چینش کوتاه‌مدت مثبت':primary.price<primary.ema20&&primary.ema20<primary.ema50?'چینش کوتاه‌مدت منفی':'چینش EMAها ترکیبی است')
+    :'اطلاعات کافی برای ساختار EMA در دسترس نیست';
+  const confirmation=primary.resistance!=null
+    ? `تأیید صعود: تثبیت بالای مقاومت ${fmt(primary.resistance)} همراه با حجم بالاتر از میانگین. تأیید نزولی: شکست حمایت ${fmt(primary.support)} و تأیید در تایم‌فریم بالاتر. این سطوح با ورود داده جدید باید دوباره محاسبه شوند.`
+    : 'برای تأیید حرکت، شکست سطح کلیدی همراه با افزایش حجم و تأیید تایم‌فریم بالاتر لازم است.';
+  const report=`1) جایگاه ارز و کاربرد واقعی
+${profile.sector}. ${profile.use}
+محرک‌های اصلی این دارایی: ${profile.drivers}
+
+2) وضعیت فعلی روی چارت
+قیمت ${fmt(primary.price)} است و وضعیت تکنیکال تایم‌فریم انتخابی ${trend} است. RSI ${fmt(primary.rsi,1)}، مومنتوم ${Number.isFinite(Number(primary.momentum))?(Number(primary.momentum)*100).toFixed(2)+'%':'نامشخص'}، نسبت حجم ${fmt(primary.volumeRatio,2)}x، ATR ${fmt(primary.atr)} و امتیاز ریسک ${risk}/100 است. ${emaState}.
+نمای چندتایم‌فریمی: ${tfSummary}. ${alignment}.
+
+3) چه چیزی به نفع رشد است
+قیمت بالاتر از EMAهای کوتاه‌تر، مومنتوم مثبت، RSI در محدوده غیر افراطی و افزایش حجم در شکست مقاومت می‌توانند حرکت صعودی را تقویت کنند. در داده فعلی، امتیاز صعودی ${bull}/100 است؛ این امتیاز احتمال آینده را تضمین نمی‌کند.
+
+4) چه چیزی خطر سقوط را بالا می‌برد
+از دست رفتن حمایت ${fmt(primary.support)}، افزایش نوسان نسبت به ATR، افت مومنتوم یا افزایش حجم فروش می‌تواند ساختار را تضعیف کند. اختلاف بین تایم‌فریم‌ها نیز باید جدی گرفته شود؛ سیگنال کوتاه‌مدت به‌تنهایی تأیید روند بزرگ‌تر نیست.
+
+5) سناریوی صعودی
+اگر قیمت بالای ${fmt(primary.resistance)} تثبیت شود و حجم تأییدکننده افزایش یابد، ساختار صعودی تقویت می‌شود. در این حالت مقاومت بعدی باید از داده جدید و ساختار بازار محاسبه شود، نه با یک هدف ثابت از پیش تعیین‌شده.
+
+6) سناریوی نزولی
+اگر قیمت حمایت ${fmt(primary.support)} را از دست بدهد و تایم‌فریم 4h یا 1d نیز شکست را تأیید کند، فشار فروش می‌تواند افزایش یابد. اگر حمایت حفظ شود، این سناریو تأیید نشده باقی می‌ماند.
+
+7) سطوح مهم و شرط تأیید
+حمایت: ${fmt(primary.support)} | مقاومت: ${fmt(primary.resistance)} | ATR: ${fmt(primary.atr)}
+${confirmation}
+
+8) جمع‌بندی هوشمند
+این تحلیل بدون API پولی و فقط با داده زنده تکنیکال CryptoPilot تولید شده است. برای تصمیم‌گیری قطعی یا تضمین سود نیست؛ تغییر قیمت و اختلاف تایم‌فریم‌ها می‌تواند نتیجه را تغییر دهد.`;
+  const v={source:'technical-fallback',symbol,name:meta.name||symbol,sector:profile.sector,useCase:profile.use,drivers:profile.drivers,updatedAt:new Date().toISOString(),analysis:primary,timeframes:tfRows.map(x=>({tf:x.tf,bias:tfBias(x.a),analysis:x.a})),report};
   chartAiCache.set(key,{t:now,v});return v;
 }
 app.get('/api/ai/chart-analysis',optionalAuth,aiLimit,async(req,res)=>{
