@@ -326,6 +326,75 @@ app.get('/api/alerts',auth,(req,res)=>res.json(db.prepare('SELECT id,symbol,targ
 app.delete('/api/alerts/:id',auth,(req,res)=>{db.prepare('DELETE FROM alerts WHERE id=? AND user_id=?').run(Number(req.params.id),req.user.id);audit(req.user.id,'alert_delete',{id:req.params.id});res.json({ok:true});});
 async function checkAlerts(){const alerts=db.prepare('SELECT * FROM alerts WHERE active=1').all();for(const al of alerts){try{const pair=Object.entries(symbols).find(([,v])=>v===al.symbol)?.[0];if(!pair)continue;const j=await getAnalysis(pair,'15m');const price=j.analysis.price;const hit=al.direction==='above'?price>=al.target:price<=al.target;if(hit){db.prepare('UPDATE alerts SET active=0,triggered_at=CURRENT_TIMESTAMP WHERE id=?').run(al.id);audit(al.user_id,'alert_triggered',{symbol:al.symbol,target:al.target,price});}}catch{}}}
 setInterval(()=>checkAlerts().catch(()=>{}),30000);
+const chartAiCache=new Map();
+function assetProfile(symbol,name=''){
+  const s=String(symbol||'').toUpperCase(), n=String(name||'').toLowerCase();
+  const profiles={
+    BTC:{sector:'Store of value / digital monetary asset',use:'Bitcoin is primarily used as a decentralized monetary network and scarce digital asset.',drivers:'ETF/institutional flows, liquidity, macro rates, dollar strength, miner economics and network activity.'},
+    ETH:{sector:'Smart-contract infrastructure / Layer 1',use:'Ethereum provides programmable settlement for decentralized applications, DeFi and tokenized assets.',drivers:'network activity, fees/burn, staking, L2 activity, institutional flows and ecosystem growth.'},
+    SOL:{sector:'Smart-contract infrastructure / high-throughput Layer 1',use:'Solana targets fast, low-cost on-chain applications, trading and consumer crypto activity.',drivers:'network activity, DEX volume, stablecoin flows, app adoption and validator/network health.'},
+    BNB:{sector:'Exchange ecosystem / Layer 1',use:'BNB is the core asset of the Binance ecosystem and BNB Chain.',drivers:'exchange activity, BNB Chain usage, token utility and regulatory/exchange developments.'},
+    XRP:{sector:'Payments / settlement network',use:'XRP is designed for fast value transfer and liquidity within payment and settlement infrastructure.',drivers:'payment adoption, liquidity, legal/regulatory developments and network activity.'},
+    DOGE:{sector:'Meme / payments-oriented cryptocurrency',use:'Dogecoin is a high-liquidity community-driven asset with payment and tipping use cases.',drivers:'market sentiment, liquidity, social attention and broader crypto risk appetite.'},
+    ADA:{sector:'Smart-contract infrastructure / Layer 1',use:'Cardano is a proof-of-stake blockchain focused on programmable applications and decentralized infrastructure.',drivers:'network adoption, application activity, staking and ecosystem development.'},
+    AVAX:{sector:'Smart-contract infrastructure / Layer 1',use:'Avalanche provides programmable blockchain infrastructure with a focus on scalable networks and applications.',drivers:'network activity, subnets/L1 adoption, DeFi liquidity and ecosystem growth.'},
+    LINK:{sector:'Oracle / Web3 infrastructure',use:'Chainlink supplies external data and interoperability services to smart contracts.',drivers:'oracle adoption, CCIP usage, DeFi/RWA demand and integration growth.'},
+    DOT:{sector:'Interoperability / Layer 0 infrastructure',use:'Polkadot focuses on interoperable blockchain infrastructure and shared security.',drivers:'network usage, parachain activity, staking and ecosystem adoption.'},
+    TRX:{sector:'Payments / stablecoin settlement infrastructure',use:'TRON is a high-throughput blockchain with substantial stablecoin transfer activity.',drivers:'USDT settlement volume, network usage, fees and ecosystem liquidity.'}
+  };
+  if(profiles[s])return profiles[s];
+  if(/ai|artificial intelligence|render|fetch|injective|near|tao|bittensor/i.test(n+' '+s))return {sector:'AI / decentralized computing',use:'This asset is associated with the AI or decentralized-compute segment; the exact utility should be checked against its project documentation.',drivers:'AI adoption, compute/data demand, ecosystem usage, token utility and speculative liquidity.'};
+  if(/link|oracle/i.test(n+' '+s))return {sector:'Web3 infrastructure / oracle',use:'Infrastructure that connects blockchain applications with external data or services.',drivers:'integrations, on-chain usage, protocol revenue and ecosystem growth.'};
+  if(/swap|dex|uniswap|raydium|jupiter/i.test(n+' '+s))return {sector:'DeFi / decentralized exchange',use:'Decentralized trading and liquidity infrastructure.',drivers:'DEX volume, liquidity, fees, TVL and broader risk appetite.'};
+  if(/usd|stable/i.test(n+' '+s))return {sector:'Stablecoin / digital dollar',use:'A token designed to track a fiat currency value rather than maximize price appreciation.',drivers:'reserve quality, liquidity, redemption confidence and regulatory conditions.'};
+  return {sector:'Crypto asset / sector requires confirmation',use:'The available market feed does not provide enough verified project metadata to classify this asset confidently.',drivers:'price liquidity, market regime, project adoption and sector-specific catalysts.'};
+}
+async function buildChartAiAnalysis(pair,tf){
+  const key=pair+'|'+tf,now=Date.now(),cached=chartAiCache.get(key);
+  if(cached&&now-cached.t<90000)return cached.v;
+  const symbol=String(symbols[pair]||pair.replace(/USDT$/,'')); 
+  const meta=symbolMeta.get(pair)||{};
+  const profile=assetProfile(symbol,meta.name||symbol);
+  const tfs=['15m','1h','4h','1d'];
+  const reports=[];
+  await Promise.all(tfs.map(async x=>{try{const j=await getAnalysis(pair,x,250);reports.push({tf:x,provider:j.provider,analysis:j.analysis});}catch{}}));
+  if(!reports.length)throw new Error('chart_ai_market_unavailable');
+  reports.sort((a,b)=>tfs.indexOf(a.tf)-tfs.indexOf(b.tf));
+  const primary=reports.find(x=>x.tf===tf)?.analysis||reports.find(x=>x.tf==='1h')?.analysis||reports[0].analysis;
+  const payload={symbol,name:meta.name||symbol,sector:profile.sector,useCase:profile.use,drivers:profile.drivers,requestedTf:tf,primary, timeframes:reports.map(x=>({tf:x.tf,analysis:x.analysis}))};
+  if(process.env.OPENAI_API_KEY){
+    const prompt=`You are CryptoPilot AI, a professional crypto market-analysis assistant. Analyze ONLY the supplied live market data and the supplied asset metadata. The user wants useful, specific and readable analysis, not generic education.
+Return a concise but expert report in Persian with exactly these headings:
+1) جایگاه ارز و کاربرد واقعی
+2) وضعیت فعلی روی چارت
+3) چه چیزی به نفع رشد است
+4) چه چیزی خطر سقوط را بالا می‌برد
+5) سناریوی صعودی
+6) سناریوی نزولی
+7) سطوح مهم و شرط تأیید
+8) جمع‌بندی هوشمند
+Under "سناریوی صعودی" and "سناریوی نزولی", use conditional language and concrete levels from the supplied data. Explain why the scenario would strengthen or fail. Compare 15m/1h/4h/1d and explicitly call out timeframe disagreement. Mention RSI, EMA structure, momentum, volume, ATR/volatility, support/resistance and risk score when available. Never promise profit, never claim certainty, and never give personalized financial advice. If project-sector metadata is uncertain, say so instead of inventing facts.
+DATA:
+${JSON.stringify(payload)}`;
+    const r=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.OPENAI_API_KEY}`},body:JSON.stringify({model:process.env.OPENAI_MODEL||'gpt-5.6-luna',input:prompt}),signal:AbortSignal.timeout(20000)});
+    if(r.ok){const j=await r.json();const v={source:'openai',model:process.env.OPENAI_MODEL||'gpt-5.6-luna',symbol,name:meta.name||symbol,sector:profile.sector,useCase:profile.use,drivers:profile.drivers,updatedAt:new Date().toISOString(),analysis:primary,report:j.output_text||''};chartAiCache.set(key,{t:now,v});return v;}
+  }
+  const bull=Number(primary.bullScore||0),bear=Number(primary.bearScore||0),risk=Number(primary.riskScore||50);
+  const trend=bull>bear+8?'متمایل به صعود':bear>bull+8?'متمایل به نزول':'خنثی / نیازمند تأیید';
+  const confirmation=primary.resistance!=null?`برای ادامه صعود، تثبیت بالای مقاومت ${primary.resistance} و حفظ حجم مهم است؛ شکست حمایت ${primary.support} سناریوی صعودی را تضعیف می‌کند.`:'برای تأیید حرکت، شکست سطح کلیدی همراه با حجم باید بررسی شود.';
+  const report=`1) جایگاه ارز و کاربرد واقعی\n${profile.sector}. ${profile.use}\n\n2) وضعیت فعلی روی چارت\nروند فعلی ${trend} است. RSI ${primary.rsi==null?'در دسترس نیست':Number(primary.rsi).toFixed(1)}، نسبت حجم ${primary.volumeRatio==null?'نامشخص':Number(primary.volumeRatio).toFixed(2)+'x'} و ریسک ${risk}/100 است. ساختار EMA20/EMA50/EMA200 و مومنتوم باید در کنار هم خوانده شوند.\n\n3) چه چیزی به نفع رشد است\nحفظ قیمت بالای حمایت، بهبود مومنتوم و افزایش حجم تأییدکننده می‌تواند احتمال ادامه حرکت را تقویت کند.\n\n4) چه چیزی خطر سقوط را بالا می‌برد\nاز دست رفتن حمایت ${primary.support??'کلیدی'}، افزایش نوسان و حجم فروش، یا واگرایی بین تایم‌فریم‌های کوتاه و بلندمدت هشدار محسوب می‌شود.\n\n5) سناریوی صعودی\nدر صورت عبور و تثبیت بالای مقاومت ${primary.resistance??'کلیدی'} با حجم مناسب، هدف بعدی باید بر اساس ساختار مقاومت بعدی و ATR ارزیابی شود.\n\n6) سناریوی نزولی\nدر صورت شکست حمایت ${primary.support??'کلیدی'} و تأیید در تایم‌فریم بالاتر، فشار فروش می‌تواند افزایش یابد؛ این به معنی پیش‌بینی قطعی سقوط نیست.\n\n7) سطوح مهم و شرط تأیید\n${confirmation}\n\n8) جمع‌بندی هوشمند\nاین گزارش از داده زنده تکنیکال ساخته شده و برای تصمیم‌گیری قطعی یا تضمین سود نیست.`;
+  const v={source:'technical-fallback',symbol,name:meta.name||symbol,sector:profile.sector,useCase:profile.use,drivers:profile.drivers,updatedAt:new Date().toISOString(),analysis:primary,report};
+  chartAiCache.set(key,{t:now,v});return v;
+}
+app.get('/api/ai/chart-analysis',optionalAuth,aiLimit,async(req,res)=>{
+  const pair=String(req.query.symbol||'BTCUSDT').toUpperCase(),tf=String(req.query.tf||'1h');
+  if(!tfMap[tf])return res.status(400).json({error:'unsupported_tf'});
+  if(!symbols[pair])await refreshMarketUniverse();
+  if(!symbols[pair])return res.status(400).json({error:'unsupported_market'});
+  try{res.json({ok:true,...await buildChartAiAnalysis(pair,tf)});}
+  catch{res.status(503).json({error:'chart_ai_unavailable'});}
+});
+
 app.post('/api/ai/analyze',auth,aiLimit,premium,async(req,res)=>{if(!process.env.OPENAI_API_KEY)return res.status(503).json({error:'ai_not_configured'});const symbol=String(req.body?.symbol||''),context=String(req.body?.context||'').slice(0,12000);try{const r=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.OPENAI_API_KEY}`},body:JSON.stringify({model:process.env.OPENAI_MODEL||'gpt-5.6-luna',input:`You are CryptoPilot AI's educational crypto market analyst. Analyze only the supplied market data. Explain trend, momentum, volatility, volume, support/resistance and risks. Never guarantee returns. Do not present certainty or personalized financial advice. Symbol: ${symbol}. Data: ${context}`}),signal:AbortSignal.timeout(20000)});if(!r.ok)throw new Error('ai');const j=await r.json();res.json({answer:j.output_text||'No analysis returned.'});}catch{res.status(503).json({error:'ai_unavailable'});}});
 let dailyPickCache={t:0,data:null,running:false};
 
