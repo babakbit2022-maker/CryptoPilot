@@ -370,17 +370,21 @@ async function buildChartAiAnalysis(pair,tf){
   }
   if(!reports.length){
     try{
-      const pages=[];
-      for(const page of [1,2]){
-        const u='https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page='+page+'&sparkline=false&price_change_percentage=24h';
-        const r=await marketFetch(u,{headers:{accept:'application/json'},signal:AbortSignal.timeout(12000)});
-        if(!r.ok)throw Error('coingecko_snapshot');
-        pages.push(...await r.json());
-      }
-      const row=pages.find(x=>String(x.symbol||'').toUpperCase()===symbol);
-      if(row&&Number.isFinite(Number(row.current_price))){
-        const ch=Number(row.price_change_percentage_24h||0);
-        reports.push({tf:'1h',provider:'CoinGecko market snapshot',analysis:{price:Number(row.current_price),rsi:null,ema20:null,ema50:null,ema200:null,atr:null,momentum:ch/100,support:null,resistance:null,bullScore:ch>=0?60:40,bearScore:ch<0?60:40,riskScore:50,setup:'MARKET_SNAPSHOT',tradeLevels:{long:null,short:null}}});
+      const searchUrl='https://api.coingecko.com/api/v3/search?query='+encodeURIComponent(symbol);
+      const sr=await marketFetch(searchUrl,{headers:{accept:'application/json'},signal:AbortSignal.timeout(7000)});
+      if(!sr.ok)throw Error('coingecko_search');
+      const sj=await sr.json();
+      const exact=(sj.coins||[]).find(x=>String(x.symbol||'').toUpperCase()===symbol);
+      const id=exact?.id;
+      if(id){
+        const pr=await marketFetch('https://api.coingecko.com/api/v3/simple/price?ids='+encodeURIComponent(id)+'&vs_currencies=usd&include_24hr_change=true',{headers:{accept:'application/json'},signal:AbortSignal.timeout(7000)});
+        if(pr.ok){
+          const pj=await pr.json(),row=pj[id],price=Number(row?.usd);
+          if(Number.isFinite(price)){
+            const ch=Number(row?.usd_24h_change||0);
+            reports.push({tf:'1h',provider:'CoinGecko live snapshot',analysis:{price,rsi:null,ema20:null,ema50:null,ema200:null,atr:null,momentum:ch/100,support:null,resistance:null,bullScore:ch>=0?60:40,bearScore:ch<0?60:40,riskScore:50,setup:'MARKET_SNAPSHOT',tradeLevels:{long:null,short:null}}});
+          }
+        }
       }
     }catch{}
   }
