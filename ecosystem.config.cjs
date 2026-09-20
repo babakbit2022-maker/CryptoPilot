@@ -14,7 +14,9 @@ module.exports = {
     },
     env_production: {
       NODE_ENV: 'production',
-      PORT: 3000
+      PORT: 3000,
+      ...(process.env.PAYMENT_WALLET ? { PAYMENT_WALLET: process.env.PAYMENT_WALLET } : {}),
+      ...(process.env.PREMIUM_PRICE_USDT ? { PREMIUM_PRICE_USDT: process.env.PREMIUM_PRICE_USDT } : {})
     }
   }]
 };
