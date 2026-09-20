@@ -368,6 +368,22 @@ async function buildChartAiAnalysis(pair,tf){
       }
     }catch{}
   }
+  if(!reports.length){
+    try{
+      const pages=[];
+      for(const page of [1,2]){
+        const u='https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page='+page+'&sparkline=false&price_change_percentage=24h';
+        const r=await marketFetch(u,{headers:{accept:'application/json'},signal:AbortSignal.timeout(12000)});
+        if(!r.ok)throw Error('coingecko_snapshot');
+        pages.push(...await r.json());
+      }
+      const row=pages.find(x=>String(x.symbol||'').toUpperCase()===symbol);
+      if(row&&Number.isFinite(Number(row.current_price))){
+        const ch=Number(row.price_change_percentage_24h||0);
+        reports.push({tf:'1h',provider:'CoinGecko market snapshot',analysis:{price:Number(row.current_price),rsi:null,ema20:null,ema50:null,ema200:null,atr:null,momentum:ch/100,support:null,resistance:null,bullScore:ch>=0?60:40,bearScore:ch<0?60:40,riskScore:50,setup:'MARKET_SNAPSHOT',tradeLevels:{long:null,short:null}}});
+      }
+    }catch{}
+  }
   if(!reports.length)throw new Error('chart_ai_market_unavailable');
   reports.sort((a,b)=>tfs.indexOf(a.tf)-tfs.indexOf(b.tf));
   const primary=reports.find(x=>x.tf===tf)?.analysis||reports.find(x=>x.tf==='1h')?.analysis||reports[0].analysis;
@@ -519,7 +535,7 @@ app.post('/api/ai/screenshot',optionalAuth,aiLimit,async(req,res)=>{
     const market=await buildChartAiAnalysis(symbol,'1h').catch(()=>null);
     if(!process.env.OPENAI_API_KEY)throw Error('not_configured');
     const prompt='You are CryptoPilot AI. Analyze the user-provided crypto trading chart screenshot as an educational technical analyst. Use visible chart information plus the supplied live market context. Identify timeframe if visible, trend, market structure, support/resistance, RSI/EMA/volume if visible, momentum, volatility, possible bullish and bearish scenarios, invalidation conditions, and practical points the user should watch. Do not invent unreadable values. If something is not visible, say so. Answer in clear Persian. Do not guarantee profit and do not give personalized financial advice. Start with a concise verdict, then explain the evidence. LIVE CONTEXT: '+JSON.stringify(market||{symbol});
-    const rr=await fetch('https://1xai.ir/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+process.env.OPENAI_API_KEY},body:JSON.stringify({model:process.env.OPENAI_MODEL||'gpt-5.6-luna',messages:[{role:'user',content:[{type:'text',text:prompt},{type:'image_url',image_url:{url:image}}]}]}),signal:AbortSignal.timeout(30000)});
+    const rr=await fetch('https://1xai.ir/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+process.env.OPENAI_API_KEY},body:JSON.stringify({model:process.env.OPENAI_VISION_MODEL||'gpt-4o',messages:[{role:'user',content:[{type:'text',text:prompt},{type:'image_url',image_url:{url:image}}]}]}),signal:AbortSignal.timeout(30000)});
     if(!rr.ok)throw Error('vision');
     const j=await rr.json();
     const answer=j.choices?.[0]?.message?.content||'تحلیل تصویری دریافت نشد.';
