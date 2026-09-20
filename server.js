@@ -357,7 +357,7 @@ async function buildChartAiAnalysis(pair,tf){
   const profile=assetProfile(symbol,meta.name||symbol);
   const tfs=['15m','1h','4h','1d'];
   const reports=[];
-  await Promise.all(tfs.map(async x=>{try{const j=await getAnalysis(pair,x,250);reports.push({tf:x,provider:j.provider,analysis:j.analysis});}catch{}}));
+  await Promise.all(tfs.map(async x=>{try{const j=await Promise.race([getAnalysis(pair,x,250),new Promise((_,reject)=>setTimeout(()=>reject(new Error('tf_timeout')),6500))]);reports.push({tf:x,provider:j.provider,analysis:j.analysis});}catch{}}));
   if(!reports.length){
     try{
       const universe=await refreshMarketUniverse();
