@@ -1,3 +1,4 @@
+// Production smoke includes live AI chart analysis verification.
 import vm from 'node:vm';
 const base = process.env.BASE_URL || 'http://87.107.190.74';
 const pages = ['/', '/auth.html', '/account.html', '/payment.html', '/chart-analysis.html', '/crypto-chart.html', '/market-analysis', '/ai-crypto-chart-analysis', '/disclaimer.html', '/privacy.html', '/admin.html'];
