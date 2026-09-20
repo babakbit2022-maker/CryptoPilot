@@ -99,35 +99,45 @@ async function refreshMarketUniverseFresh(){
   const now=Date.now();
   if(universeInflight)return universeInflight;
   universeInflight=(async()=>{try{
-    const cgPages=await Promise.all([1,2].map(async page=>{const u='https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page='+page+'&sparkline=false&price_change_percentage=24h';const r=await marketFetch(u,{headers:{accept:'application/json'},signal:AbortSignal.timeout(10000)});if(!r.ok)throw new Error('coingecko universe');return r.json();}));
-    const cg={ok:true,json:async()=>cgPages.flat()};
-    if(!cg.ok)throw new Error('coingecko universe');
-    const market=(await cg.json()).slice(0,500);
-    // Do not block the dashboard on Binance exchangeInfo. VPS environments can return 451/timeouts;
-    // chartability is resolved on-demand by the market-data provider chain instead.
-    const tradable=new Set();
-    const seen=new Set();
-    const v=[];
+    // CoinMarketCap is the primary market-data source. Use its public keyless
+    // endpoint so the app can run immediately; a CMC API key can later be
+    // supplied through CMC_API_KEY without changing the frontend.
+    const base=process.env.CMC_API_KEY
+      ? 'https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest'
+      : 'https://pro-api.coinmarketcap.com/public-api/v1/cryptocurrency/listings/latest';
+    const headers={accept:'application/json'};
+    if(process.env.CMC_API_KEY)headers['X-CMC_PRO_API_KEY']=process.env.CMC_API_KEY;
+    const pages=[];
+    for(const start of [1,251]){
+      const u=base+'?start='+start+'&limit=250&convert=USD';
+      const r=await marketFetch(u,{headers,signal:AbortSignal.timeout(10000)});
+      if(!r.ok)throw new Error('coinmarketcap universe');
+      const j=await r.json();
+      if(!Array.isArray(j?.data))throw new Error('coinmarketcap response');
+      pages.push(...j.data);
+    }
+    const market=pages.slice(0,500);
+    const seen=new Set(),v=[];
     for(const c of market){
       const symbol=String(c.symbol||'').toUpperCase();
       const pair=symbol+'USDT';
-      if(seen.has(pair))continue;
+      if(!symbol||seen.has(pair))continue;
       seen.add(pair);
-      // Register every CoinGecko asset so the dashboard can open its market endpoint.
-      // Chart availability is resolved on-demand through Binance market-data fallbacks.
       symbols[pair]=symbol;
-      symbolMeta.set(pair,{symbol,coingeckoId:c.id,marketCap:c.market_cap||0,marketCapRank:c.market_cap_rank||null,name:c.name||symbol,image:c.image||null});
-      const chartable=true;
-      v.push({pair,symbol,name:c.name||symbol,marketCap:c.market_cap||0,marketCapRank:c.market_cap_rank||null,image:c.image||null,change24h:c.price_change_percentage_24h??null,price:c.current_price??null,volume24h:c.total_volume??null,circulatingSupply:c.circulating_supply??null,totalSupply:c.total_supply??null,maxSupply:c.max_supply??null,chartable});
+      const quote=c.quote?.USD||{};
+      symbolMeta.set(pair,{symbol,coingeckoId:null,marketCap:quote.market_cap||0,marketCapRank:c.cmc_rank||null,name:c.name||symbol,image:null});
+      v.push({pair,symbol,name:c.name||symbol,marketCap:quote.market_cap??null,marketCapRank:c.cmc_rank??null,image:null,change24h:quote.percent_change_24h??null,price:quote.price??null,volume24h:quote.volume_24h??null,circulatingSupply:c.circulating_supply??null,totalSupply:c.total_supply??null,maxSupply:c.max_supply??null,chartable:true,provider:'CoinMarketCap live market feed'});
     }
-    // Keep the top-500 CoinGecko market-cap universe; only live Binance USDT pairs are chartable.
+    if(v.length<100)throw new Error('coinmarketcap insufficient');
     cache.set('__universe',{t:now,v});
     persistUniverse(v,now);
     return v;
   }catch{
     const previous=cache.get('__universe')?.v;
     if(Array.isArray(previous)&&previous.length>=100)return previous;
-    const fallback=Object.entries(symbols).map(([pair,symbol])=>{const m=symbolMeta.get(pair)||{};return {pair,symbol,name:m.name||symbol,image:m.image||null,marketCap:m.marketCap||0,marketCapRank:m.marketCapRank||null,change24h:null,price:null,volume24h:null,circulatingSupply:null,totalSupply:null,maxSupply:null,chartable:true};});
+    // Last-resort compatibility fallback. This is only used when CMC and the
+    // persisted cache are both unavailable.
+    const fallback=Object.entries(symbols).map(([pair,symbol])=>{const m=symbolMeta.get(pair)||{};return {pair,symbol,name:m.name||symbol,image:m.image||null,marketCap:m.marketCap||0,marketCapRank:m.marketCapRank||null,change24h:null,price:null,volume24h:null,circulatingSupply:null,totalSupply:null,maxSupply:null,chartable:true,provider:'Fallback market feed'};});
     cache.set('__universe',{t:now,v:fallback});
     return fallback;
   }finally{universeInflight=null;}}
