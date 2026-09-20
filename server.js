@@ -266,6 +266,7 @@ app.get('/api/payment/config',(req,res)=>{
   if(!cfg)return res.status(503).json({error:'payment_not_configured'});
   res.json({ok:true,amount:cfg.amount,network:cfg.network,asset:cfg.asset,wallet:cfg.wallet,contract:cfg.contract,decimals:cfg.decimals});
 });
+app.get('/api/payment/status',optionalAuth,(req,res)=>{const cfg=paymentConfig();res.json({ok:true,configured:Boolean(cfg),signedIn:Boolean(req.user),premium:req.user?.plan==='premium',network:'TRC20',asset:'USDT',automaticVerification:Boolean(cfg)});});
 app.get('/api/payment/verification-engine',(req,res)=>{
   const cfg=paymentConfig();
   res.json({ok:Boolean(cfg),automatic:Boolean(cfg),provider:'TRONSCAN + TronGrid',network:'TRC20',asset:'USDT'});
