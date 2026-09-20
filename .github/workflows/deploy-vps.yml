@@ -32,16 +32,20 @@ jobs:
         uses: appleboy/ssh-action@v1.2.2
         env:
           DEPLOY_SHA: ${{ github.sha }}
+          PAYMENT_WALLET: TVF8neJkqF92NooEzJP1ELAVubprXtN2SS
+          PREMIUM_PRICE_USDT: "10"
         with:
           host: 87.107.190.74
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT || '22' }}
           command_timeout: 10m
-          envs: DEPLOY_SHA
+          envs: DEPLOY_SHA,PAYMENT_WALLET,PREMIUM_PRICE_USDT
           script: |
             set -e
             test -n "$DEPLOY_SHA"
+            test -n "$PAYMENT_WALLET"
+            test "$PREMIUM_PRICE_USDT" = "10"
             mkdir -p /opt/cryptopilot
             cd /opt/cryptopilot
             if [ ! -d .git ]; then
@@ -55,7 +59,7 @@ jobs:
             git rev-parse HEAD
             npm install --omit=dev --no-audit --no-fund
             npm install -g pm2
-            pm2 startOrRestart ecosystem.config.cjs --env production
+            PAYMENT_WALLET="$PAYMENT_WALLET" PREMIUM_PRICE_USDT="$PREMIUM_PRICE_USDT" pm2 startOrRestart ecosystem.config.cjs --env production --update-env
             pm2 save
             if ! command -v nginx >/dev/null 2>&1; then
               apt-get update -y
