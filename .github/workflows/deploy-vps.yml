@@ -59,7 +59,7 @@ jobs:
             git rev-parse HEAD
             npm install --omit=dev --no-audit --no-fund
             npm install -g pm2
-            PAYMENT_WALLET="$PAYMENT_WALLET" PREMIUM_PRICE_USDT="$PREMIUM_PRICE_USDT" pm2 startOrRestart ecosystem.config.cjs --env production --update-env
+            if [ -f /etc/cryptopilot.env ]; then set -a; . /etc/cryptopilot.env; set +a; fi\n            PAYMENT_WALLET="$PAYMENT_WALLET" PREMIUM_PRICE_USDT="$PREMIUM_PRICE_USDT" pm2 startOrRestart ecosystem.config.cjs --env production --update-env
             pm2 save
             if ! command -v nginx >/dev/null 2>&1; then
               apt-get update -y
