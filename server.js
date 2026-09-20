@@ -31,7 +31,7 @@ CREATE INDEX IF NOT EXISTS idx_daily_pick_items_run ON daily_pick_items(run_id,r
 `);
 app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : false);
 app.use(helmet({ contentSecurityPolicy: false }));
-app.use(express.json({ limit: '100kb' }));
+app.use(express.json({ limit: '12mb' }));
 app.use(express.static('public', { extensions: ['html'] }));
 const authLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
 const apiLimit = rateLimit({ windowMs: 60 * 1000, max: 120, standardHeaders: true, legacyHeaders: false });
@@ -386,8 +386,8 @@ Return a concise but expert report in Persian with exactly these headings:
 Under "سناریوی صعودی" and "سناریوی نزولی", use conditional language and concrete levels from the supplied data. Explain why the scenario would strengthen or fail. Compare 15m/1h/4h/1d and explicitly call out timeframe disagreement. Mention RSI, EMA structure, momentum, volume, ATR/volatility, support/resistance and risk score when available. Never promise profit, never claim certainty, and never give personalized financial advice. If project-sector metadata is uncertain, say so instead of inventing facts.
 DATA:
 ${JSON.stringify(payload)}`;
-    const r=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.OPENAI_API_KEY}`},body:JSON.stringify({model:process.env.OPENAI_MODEL||'gpt-5.6-luna',input:prompt}),signal:AbortSignal.timeout(20000)});
-    if(r.ok){const j=await r.json();const v={source:'openai',model:process.env.OPENAI_MODEL||'gpt-5.6-luna',symbol,name:meta.name||symbol,sector:profile.sector,useCase:profile.use,drivers:profile.drivers,updatedAt:new Date().toISOString(),analysis:primary,report:j.output_text||''};chartAiCache.set(key,{t:now,v});return v;}
+    const r=await fetch('https://1xai.ir/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.OPENAI_API_KEY}`},body:JSON.stringify({model:process.env.OPENAI_MODEL||'gpt-5.6-luna',messages:[{role:'user',content:prompt}]}),signal:AbortSignal.timeout(20000)});
+    if(r.ok){const j=await r.json();const v={source:'1xai',model:process.env.OPENAI_MODEL||'gpt-5.6-luna',symbol,name:meta.name||symbol,sector:profile.sector,useCase:profile.use,drivers:profile.drivers,updatedAt:new Date().toISOString(),analysis:primary,report:j.choices?.[0]?.message?.content||''};chartAiCache.set(key,{t:now,v});return v;}
   }
   const bull=Number(primary.bullScore||0),bear=Number(primary.bearScore||0),risk=Number(primary.riskScore||50);
   const trend=bull>bear+8?'متمایل به صعود':bear>bull+8?'متمایل به نزول':'خنثی / نیازمند تأیید';
@@ -466,8 +466,8 @@ app.post('/api/ai/ask',optionalAuth,aiLimit,async(req,res)=>{
     if(process.env.OPENAI_API_KEY){
       const context={symbol:v.symbol,sector:v.sector,useCase:v.useCase,analysis:v.analysis,timeframes:v.timeframes};
       const prompt='You are CryptoPilot AI. Answer the user Persian crypto question using ONLY the supplied live market data and asset metadata. Start from the exact current timestamp. Write naturally and clearly, like an expert answering a normal user. If the question asks whether to buy, do not give a guaranteed yes/no; explain conditions and risks. Always cover short-term, medium-term and long-term views when relevant. Explain RSI, EMA, momentum, volume, support/resistance and timeframe agreement in simple language. Be specific, concise but complete. Never promise profit.\nUser question: '+question+'\nDATA: '+JSON.stringify(context);
-      const rr=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+process.env.OPENAI_API_KEY},body:JSON.stringify({model:process.env.OPENAI_MODEL||'gpt-5.6-luna',input:prompt}),signal:AbortSignal.timeout(20000)});
-      if(rr.ok){const j=await rr.json();return res.json({ok:true,source:'openai',symbol:v.symbol,asOf:new Date().toISOString(),answer:j.output_text||buildAiQuestionAnswer(question,v)});}
+      const rr=await fetch('https://1xai.ir/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+process.env.OPENAI_API_KEY},body:JSON.stringify({model:process.env.OPENAI_MODEL||'gpt-5.6-luna',messages:[{role:'user',content:prompt}]}),signal:AbortSignal.timeout(20000)});
+      if(rr.ok){const j=await rr.json();return res.json({ok:true,source:'1xai',symbol:v.symbol,asOf:new Date().toISOString(),answer:j.output_text||buildAiQuestionAnswer(question,v)});}
     }
     res.json({ok:true,source:'technical-engine',symbol:v.symbol,asOf:new Date().toISOString(),answer:buildAiQuestionAnswer(question,v)});
   }catch{res.status(503).json({error:'ai_question_unavailable'});}
@@ -482,7 +482,51 @@ app.get('/api/ai/chart-analysis',optionalAuth,aiLimit,async(req,res)=>{
   catch{res.status(503).json({error:'chart_ai_unavailable'});}
 });
 
-app.post('/api/ai/analyze',auth,aiLimit,premium,async(req,res)=>{if(!process.env.OPENAI_API_KEY)return res.status(503).json({error:'ai_not_configured'});const symbol=String(req.body?.symbol||''),context=String(req.body?.context||'').slice(0,12000);try{const r=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.OPENAI_API_KEY}`},body:JSON.stringify({model:process.env.OPENAI_MODEL||'gpt-5.6-luna',input:`You are CryptoPilot AI's educational crypto market analyst. Analyze only the supplied market data. Explain trend, momentum, volatility, volume, support/resistance and risks. Never guarantee returns. Do not present certainty or personalized financial advice. Symbol: ${symbol}. Data: ${context}`}),signal:AbortSignal.timeout(20000)});if(!r.ok)throw new Error('ai');const j=await r.json();res.json({answer:j.output_text||'No analysis returned.'});}catch{res.status(503).json({error:'ai_unavailable'});}});
+app.post('/api/ai/analyze',auth,aiLimit,premium,async(req,res)=>{if(!process.env.OPENAI_API_KEY)return res.status(503).json({error:'ai_not_configured'});const symbol=String(req.body?.symbol||''),context=String(req.body?.context||'').slice(0,12000);try{const r=await fetch('https://1xai.ir/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.OPENAI_API_KEY}`},body:JSON.stringify({model:process.env.OPENAI_MODEL||'gpt-5.6-luna',messages:[{role:'user',content:`You are CryptoPilot AI's educational crypto market analyst. Analyze only the supplied market data. Explain trend, momentum, volatility, volume, support/resistance and risks. Never guarantee returns. Do not present certainty or personalized financial advice. Symbol: ${symbol}. Data: ${context}`}]}),signal:AbortSignal.timeout(20000)});if(!r.ok)throw new Error('ai');const j=await r.json();res.json({answer:j.output_text||'No analysis returned.'});}catch{res.status(503).json({error:'ai_unavailable'});}});
+
+// Large-trade activity: this is exchange trade-flow data, not identified on-chain whale wallets.
+const whaleCache=new Map();
+app.get('/api/whales',optionalAuth,apiLimit,async(req,res)=>{
+  const pair=String(req.query.symbol||'BTCUSDT').toUpperCase();
+  if(!/^[A-Z0-9]{5,20}USDT$/.test(pair))return res.status(400).json({error:'unsupported_market'});
+  const cached=whaleCache.get(pair);
+  if(cached&&Date.now()-cached.t<30000)return res.json(cached.v);
+  try{
+    const u='https://api.binance.com/api/v3/aggTrades?symbol='+encodeURIComponent(pair)+'&limit=1000';
+    const r=await fetch(u,{signal:AbortSignal.timeout(10000)});
+    if(!r.ok)throw Error('binance');
+    const rows=await r.json();
+    const trades=rows.map(x=>{
+      const price=Number(x.p),qty=Number(x.q),notional=price*qty;
+      return {time:new Date(Number(x.T)).toISOString(),price,quantity:qty,notional,side:x.m?'SELL':'BUY'};
+    }).filter(x=>Number.isFinite(x.notional)&&x.notional>0);
+    const sorted=[...trades].sort((a,b)=>b.notional-a.notional);
+    const threshold=Math.max(100000,sorted[Math.min(49,sorted.length-1)]?.notional||100000);
+    const large=sorted.filter(x=>x.notional>=threshold).slice(0,12).sort((a,b)=>a.time.localeCompare(b.time));
+    const buy=large.filter(x=>x.side==='BUY').reduce((n,x)=>n+x.notional,0);
+    const sell=large.filter(x=>x.side==='SELL').reduce((n,x)=>n+x.notional,0);
+    const net=buy-sell;
+    const view={ok:true,symbol:pair,asOf:new Date().toISOString(),window:'latest 1000 exchange aggregate trades',threshold,largeTrades:large,buyNotional:buy,sellNotional:sell,netNotional:net,bias:Math.abs(net)<Math.max(buy+sell,1)*.1?'mixed':net>0?'large-buy flow':'large-sell flow',disclaimer:'These are large exchange trade flows, not proof of specific whale identities or on-chain wallet movements.'};
+    whaleCache.set(pair,{t:Date.now(),v:view});return res.json(view);
+  }catch{res.status(503).json({error:'whale_activity_unavailable'});}
+});
+app.post('/api/ai/screenshot',optionalAuth,aiLimit,async(req,res)=>{
+  const symbol=String(req.body?.symbol||'BTCUSDT').toUpperCase();
+  const image=String(req.body?.image||'');
+  if(!/^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=]+$/.test(image))return res.status(400).json({error:'invalid_image'});
+  if(image.length>11000000)return res.status(413).json({error:'image_too_large'});
+  try{
+    const market=await buildChartAiAnalysis(symbol,'1h').catch(()=>null);
+    if(!process.env.OPENAI_API_KEY)throw Error('not_configured');
+    const prompt='You are CryptoPilot AI. Analyze the user-provided crypto trading chart screenshot as an educational technical analyst. Use visible chart information plus the supplied live market context. Identify timeframe if visible, trend, market structure, support/resistance, RSI/EMA/volume if visible, momentum, volatility, possible bullish and bearish scenarios, invalidation conditions, and practical points the user should watch. Do not invent unreadable values. If something is not visible, say so. Answer in clear Persian. Do not guarantee profit and do not give personalized financial advice. Start with a concise verdict, then explain the evidence. LIVE CONTEXT: '+JSON.stringify(market||{symbol});
+    const rr=await fetch('https://1xai.ir/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+process.env.OPENAI_API_KEY},body:JSON.stringify({model:process.env.OPENAI_MODEL||'gpt-5.6-luna',messages:[{role:'user',content:[{type:'text',text:prompt},{type:'image_url',image_url:{url:image}}]}]}),signal:AbortSignal.timeout(30000)});
+    if(!rr.ok)throw Error('vision');
+    const j=await rr.json();
+    const answer=j.choices?.[0]?.message?.content||'تحلیل تصویری دریافت نشد.';
+    res.json({ok:true,source:'1xai',symbol,asOf:new Date().toISOString(),answer});
+  }catch{res.status(503).json({error:'screenshot_ai_unavailable'});}
+});
+
 let dailyPickCache={t:0,data:null,running:false};
 
 function utcDateKey(d=new Date()){return d.toISOString().slice(0,10);}
