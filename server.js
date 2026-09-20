@@ -130,8 +130,8 @@ async function refreshMarketUniverseFresh(){
     const fallback=Object.entries(symbols).map(([pair,symbol])=>{const m=symbolMeta.get(pair)||{};return {pair,symbol,name:m.name||symbol,image:m.image||null,marketCap:m.marketCap||0,marketCapRank:m.marketCapRank||null,change24h:null,price:null,volume24h:null,circulatingSupply:null,totalSupply:null,maxSupply:null,chartable:true};});
     cache.set('__universe',{t:now,v:fallback});
     return fallback;
-  }finally{universeInflight=null;}
-  })();
+  }finally{universeInflight=null;}}
+  )();
   return universeInflight;
 }
 
