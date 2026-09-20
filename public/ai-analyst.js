@@ -1,38 +1,40 @@
-(()=>{
-  const q=new URLSearchParams(location.search), pair=(q.get('symbol')||'BTCUSDT').toUpperCase(), tf=q.get('tf')||'1h';
+(()=>{ 
   const $=id=>document.getElementById(id);
-  const money=n=>n==null||!Number.isFinite(Number(n))?'—':'$'+Number(n).toLocaleString(undefined,{maximumFractionDigits:Number(n)<1?8:2});
-  const pct=n=>n==null||!Number.isFinite(Number(n))?'—':(Number(n)>=0?'+':'')+Number(n).toFixed(2)+'%';
   const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-  function verdict(a){
-    const bull=Number(a.bullScore||0),bear=Number(a.bearScore||0),risk=Number(a.riskScore||50),r=a.rsi;
-    let label='NEUTRAL / WAIT',tone='neutral';
-    if(bull>=72&&bull>bear+12&&risk<70){label='BULLISH BIAS';tone='up';}
-    else if(bear>=72&&bear>bull+12&&risk<70){label='BEARISH BIAS';tone='down';}
-    else if(risk>=75){label='HIGH RISK — WAIT FOR CONFIRMATION';tone='warn';}
-    const parts=[];
-    if(a.ema20&&a.ema50&&a.ema200){parts.push(a.price>a.ema20&&a.ema20>a.ema50?'short-term trend is above its moving averages':a.price<a.ema20&&a.ema20<a.ema50?'short-term trend is below its moving averages':'moving-average structure is mixed');}
-    if(r!=null)parts.push(r>=70?'RSI is elevated':r<=30?'RSI is oversold':'RSI is in a non-extreme zone');
-    if(a.volumeRatio!=null)parts.push(a.volumeRatio>=1.5?'volume is unusually active':a.volumeRatio>=1.2?'volume is above its recent average':'volume is not strongly confirming the move');
-    if(a.support!=null&&a.resistance!=null)parts.push(`support ${money(a.support)} / resistance ${money(a.resistance)}`);
-    return {label,tone,text:parts.join(' · ')};
+  const money=n=>n==null||!Number.isFinite(Number(n))?'—':'$'+Number(n).toLocaleString(undefined,{maximumFractionDigits:Number(n)<1?8:2});
+  let timer=null, lastKey='';
+  function css(){if($('cpAiStyle'))return;const s=document.createElement('style');s.id='cpAiStyle';s.textContent=`
+  .cp-ai-deep{margin-top:14px;border:1px solid #2a4661;border-radius:16px;background:linear-gradient(135deg,#0a1a2a,#11172b);overflow:hidden}
+  .cp-ai-deep-head{padding:15px 16px;border-bottom:1px solid #1b3045;display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+  .cp-ai-kicker{font-size:9px;letter-spacing:1.5px;color:#8194aa;text-transform:uppercase}.cp-ai-deep-title{font-size:20px;font-weight:950;margin-top:3px}.cp-ai-deep-sub{color:#91a4b8;font-size:11px;margin-top:3px}
+  .cp-ai-engine{font-size:9px;font-weight:900;padding:7px 9px;border:1px solid #28503f;background:#0a211b;color:#a9e9d0;border-radius:999px;white-space:nowrap}
+  .cp-ai-engine.fallback{border-color:#4a4250;background:#211a24;color:#f0c9a4}
+  .cp-ai-body{padding:15px 16px}.cp-ai-profile{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:12px}
+  .cp-ai-box{background:#081624;border:1px solid #182d43;border-radius:11px;padding:10px}.cp-ai-box small{display:block;color:#8194aa;font-size:9px;text-transform:uppercase}.cp-ai-box b{display:block;margin-top:4px;font-size:12px}
+  .cp-ai-report{display:grid;gap:8px}.cp-ai-section{background:#081624;border:1px solid #182d43;border-radius:11px;padding:11px}.cp-ai-section h4{margin:0 0 5px;font-size:12px;color:#dce7f2}.cp-ai-section p{margin:0;color:#a9bacb;font-size:11px;line-height:1.75;white-space:pre-wrap}
+  .cp-ai-scenarios{display:grid;grid-template-columns:1fr 1fr;gap:9px}.cp-ai-scenarios .cp-ai-section:first-child{border-color:#24503f}.cp-ai-scenarios .cp-ai-section:last-child{border-color:#51313a}
+  .cp-ai-foot{padding:10px 16px;border-top:1px solid #1b3045;color:#65798e;font-size:9px}.cp-ai-loading{color:#8fa2b6;font-size:11px;padding:8px 0}
+  @media(max-width:700px){.cp-ai-profile,.cp-ai-scenarios{grid-template-columns:1fr}.cp-ai-deep-head{flex-direction:column}}
+  `;document.head.appendChild(s)}
+  function key(){const q=new URLSearchParams(location.search);return (q.get('symbol')||'BTCUSDT').toUpperCase()+'|'+(q.get('tf')||'1h')}
+  function sectionize(report){
+    const lines=String(report||'').split(/\n+/).map(x=>x.trim()).filter(Boolean), out=[];let cur=null;
+    for(const line of lines){if(/^\d+\)/.test(line)){if(cur)out.push(cur);cur={h:line.replace(/^\d+\)\s*/,''),p:''};}else if(cur)cur.p+=(cur.p?'\n':'')+line;else cur={h:'AI Analysis',p:line}}
+    if(cur)out.push(cur);return out;
   }
-  function build(a){
-    const v=verdict(a), mom=pct(Number(a.momentum||0)*100), vr=a.volumeRatio==null?'—':Number(a.volumeRatio).toFixed(2)+'x';
-    const long=a.tradeLevels?.long,short=a.tradeLevels?.short;
-    return `<div id="cpAiBrief" class="cp-ai-brief"><div class="cp-ai-top"><div><div class="cp-ai-kicker">CRYPTO PILOT AI · LIVE VERDICT</div><div class="cp-ai-label ${v.tone}">${esc(v.label)}</div></div><div class="cp-ai-score">${Number(a.bullScore||0)} <span>BULL</span> · ${Number(a.bearScore||0)} <span>BEAR</span></div></div><p>${esc(v.text||'Waiting for enough market data.')}</p><div class="cp-ai-grid"><div><small>Momentum</small><b>${mom}</b></div><div><small>Volume</small><b>${vr}</b></div><div><small>Risk</small><b>${Number(a.riskScore||0)}/100</b></div><div><small>RSI</small><b>${a.rsi==null?'—':Number(a.rsi).toFixed(1)}</b></div></div><div class="cp-ai-levels"><div><small>Potential long map</small><b>${long?money(long.entry)+' → '+money(long.tp1)+' / SL '+money(long.stop):'Not enough data'}</b></div><div><small>Potential short map</small><b>${short?money(short.entry)+' → '+money(short.tp1)+' / SL '+money(short.stop):'Not enough data'}</b></div></div><div class="cp-ai-note">This is an automated technical interpretation of the live feed, not a guarantee or financial advice.</div></div>`;
+  function render(v){
+    css();let root=$('cpAiDeep');if(!root){const grid=document.querySelector('.aiGrid');if(!grid)return;grid.insertAdjacentHTML('beforebegin',`<div id="cpAiDeep" class="cp-ai-deep"></div>`);root=$('cpAiDeep')}
+    const a=v.analysis||{}, sections=sectionize(v.report);
+    const normal=sections.filter(x=>!/^سناریوی (صعودی|نزولی)$/i.test(x.h));
+    const scenarios=sections.filter(x=>/^سناریوی (صعودی|نزولی)$/i.test(x.h));
+    root.innerHTML=`<div class="cp-ai-deep-head"><div><div class="cp-ai-kicker">CryptoPilot AI · Live chart intelligence</div><div class="cp-ai-deep-title">تحلیل هوشمند ${esc(v.symbol||'')}</div><div class="cp-ai-deep-sub">${esc(a.tf||new URLSearchParams(location.search).get('tf')||'1h')} · تحلیل چندتایم‌فریمی · به‌روزرسانی زنده</div></div><span class="cp-ai-engine ${v.source==='openai'?'':'fallback'}">${v.source==='openai'?'AI ENGINE · LIVE':'TECHNICAL ENGINE'}</span></div><div class="cp-ai-body"><div class="cp-ai-profile"><div class="cp-ai-box"><small>حوزه / کاربرد</small><b>${esc(v.sector||'نیازمند بررسی')}</b><span style="display:block;color:#8fa2b6;font-size:10px;margin-top:4px">${esc(v.useCase||'')}</span></div><div class="cp-ai-box"><small>وضعیت تکنیکال</small><b>${esc(a.setup||'NEUTRAL').replaceAll('_',' ')}</b><span style="display:block;color:#8fa2b6;font-size:10px;margin-top:4px">RSI ${a.rsi==null?'—':Number(a.rsi).toFixed(1)} · Risk ${a.riskScore==null?'—':a.riskScore+'/100'} · Support ${money(a.support)} · Resistance ${money(a.resistance)}</span></div></div><div class="cp-ai-report">${normal.map(x=>`<div class="cp-ai-section"><h4>${esc(x.h)}</h4><p>${esc(x.p)}</p></div>`).join('')}</div>${scenarios.length?`<div class="cp-ai-scenarios" style="margin-top:8px">${scenarios.map(x=>`<div class="cp-ai-section"><h4>${esc(x.h)}</h4><p>${esc(x.p)}</p></div>`).join('')}</div>`:''}</div><div class="cp-ai-foot">تحلیل بر اساس داده بازار و ساختار چارت است؛ سناریوها شرطی هستند و تضمین رشد یا سقوط و توصیه مالی شخصی نیستند.</div>`;
   }
-  function premiumize(){
-    const grid=document.querySelector('.aiGrid'); if(!grid||grid.dataset.aiWired)return; grid.dataset.aiWired='1';
-    grid.querySelectorAll('.aiCard.premium').forEach(c=>{c.style.cursor='pointer';c.addEventListener('click',()=>location.href='/payment.html');});
-    const quick=[...grid.querySelectorAll('.aiCard')].find(c=>c.textContent.includes('Quick AI Verdict'));
-    if(quick){quick.style.cursor='pointer';quick.addEventListener('click',()=>document.getElementById('cpAiBrief')?.scrollIntoView({behavior:'smooth',block:'center'}));}
+  async function run(force=false){
+    const k=key();if(!force&&k===lastKey&&$('cpAiDeep')?.dataset.loaded==='1')return;lastKey=k;
+    css();let root=$('cpAiDeep');if(!root){const grid=document.querySelector('.aiGrid');if(!grid)return;grid.insertAdjacentHTML('beforebegin',`<div id="cpAiDeep" class="cp-ai-deep"><div class="cp-ai-body"><div class="cp-ai-loading">در حال تحلیل تخصصی ارز و ساختار چارت…</div></div></div>`);root=$('cpAiDeep')}else root.innerHTML='<div class="cp-ai-body"><div class="cp-ai-loading">در حال تحلیل تخصصی ارز و ساختار چارت…</div></div>';
+    try{const q=new URLSearchParams(location.search),symbol=(q.get('symbol')||'BTCUSDT').toUpperCase(),tf=q.get('tf')||'1h';const r=await fetch(`/api/ai/chart-analysis?symbol=${encodeURIComponent(symbol)}&tf=${encodeURIComponent(tf)}&_=${Date.now()}`,{cache:'no-store'});const j=await r.json();if(!r.ok||!j.ok)throw Error(j.error||'ai');root.dataset.loaded='1';render(j);}
+    catch{root.innerHTML='<div class="cp-ai-body"><div class="cp-ai-loading">تحلیل هوشمند فعلاً در دسترس نیست؛ داده زنده چارت همچنان فعال است.</div></div>';root.dataset.loaded='0';}
   }
-  function injectStyle(){if($('cpAiStyle'))return;const s=document.createElement('style');s.id='cpAiStyle';s.textContent='.cp-ai-brief{margin-top:14px;border:1px solid #29445d;border-radius:15px;padding:15px;background:linear-gradient(135deg,#0b1b2b,#11152a);box-shadow:0 10px 35px rgba(0,0,0,.18)}.cp-ai-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.cp-ai-kicker{font-size:9px;letter-spacing:1.4px;color:#8194aa}.cp-ai-label{font-size:19px;font-weight:950;margin-top:3px}.cp-ai-label.up{color:#35d69b}.cp-ai-label.down{color:#ff6378}.cp-ai-label.warn{color:#f5c85b}.cp-ai-label.neutral{color:#64e6ff}.cp-ai-score{font-size:12px;font-weight:900;color:#dce7f2}.cp-ai-score span{font-size:9px;color:#8194aa}.cp-ai-brief p{color:#a9bacb;font-size:12px;margin:10px 0}.cp-ai-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.cp-ai-grid>div,.cp-ai-levels>div{background:#081624;border:1px solid #182d43;border-radius:10px;padding:9px}.cp-ai-brief small{display:block;color:#8194aa;font-size:9px;text-transform:uppercase}.cp-ai-brief b{display:block;margin-top:3px;font-size:12px}.cp-ai-levels{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}.cp-ai-note{font-size:9px;color:#61748a;margin-top:10px}@media(max-width:600px){.cp-ai-grid{grid-template-columns:repeat(2,1fr)}.cp-ai-levels{grid-template-columns:1fr}.cp-ai-top{flex-direction:column}}';document.head.appendChild(s)}
-  async function run(){
-    try{const r=await fetch(`/api/market/${encodeURIComponent(pair)}?tf=${encodeURIComponent(tf)}`,{cache:'no-store'}),j=await r.json();if(!r.ok||!j.analysis)throw Error('market');
-      injectStyle(); const grid=document.querySelector('.aiGrid'); if(grid&&!$('cpAiBrief')) grid.insertAdjacentHTML('afterend',build(j.analysis)); premiumize();
-    }catch{ /* Existing market page remains usable; the core live chart handles its own retry. */ }
-  }
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',run);else run();
+  function wire(){const coin=$('coin');coin?.addEventListener('change',()=>setTimeout(()=>run(true),120));document.querySelectorAll('[data-tf]').forEach(b=>b.addEventListener('click',()=>setTimeout(()=>run(true),120)));run(true);if(timer)clearInterval(timer);timer=setInterval(()=>run(true),90000);}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire);else wire();
 })();
