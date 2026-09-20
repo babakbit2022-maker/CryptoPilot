@@ -56,7 +56,14 @@ jobs:
             npm install --omit=dev --no-audit --no-fund
             npm install -g pm2
             if [ -f /etc/cryptopilot.env ]; then set -a; . /etc/cryptopilot.env; set +a; fi
-            pm2 startOrRestart ecosystem.config.cjs --env production --update-env
+            if [ -n "${PAYMENT_WALLET:-}" ] && [ "${PREMIUM_PRICE_USDT:-}" = "10" ]; then
+              pm2 startOrRestart ecosystem.config.cjs --env production --update-env
+            elif [ -f /root/.pm2/dump.pm2.bak ]; then
+              cp /root/.pm2/dump.pm2.bak /root/.pm2/dump.pm2
+              pm2 resurrect
+            else
+              pm2 restart cryptopilot
+            fi
             pm2 save
             if ! command -v nginx >/dev/null 2>&1; then
               apt-get update -y
