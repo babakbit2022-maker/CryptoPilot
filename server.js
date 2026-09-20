@@ -421,7 +421,7 @@ DATA:
 ${JSON.stringify(payload)}`;
     const r=await fetch('https://1xai.ir/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.OPENAI_API_KEY}`},body:JSON.stringify({model:process.env.OPENAI_MODEL||'gpt-5.6-luna',messages:[{role:'user',content:prompt}]}),signal:AbortSignal.timeout(20000)});
     if(r.ok){const j=await r.json();const v={source:'1xai',model:process.env.OPENAI_MODEL||'gpt-5.6-luna',symbol,name:meta.name||symbol,sector:profile.sector,useCase:profile.use,drivers:profile.drivers,updatedAt:new Date().toISOString(),analysis:primary,report:j.choices?.[0]?.message?.content||''};chartAiCache.set(key,{t:now,v});return v;}
-  }
+  }}catch{}
   const bull=Number(primary.bullScore||0),bear=Number(primary.bearScore||0),risk=Number(primary.riskScore||50);
   const trend=bull>bear+8?'متمایل به صعود':bear>bull+8?'متمایل به نزول':'خنثی / نیازمند تأیید';
   const fmt=(v,d=2)=>Number.isFinite(Number(v))?Number(v).toLocaleString('en-US',{maximumFractionDigits:d}):'نامشخص';
