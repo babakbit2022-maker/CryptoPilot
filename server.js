@@ -433,6 +433,46 @@ ${confirmation}
   const v={source:'technical-fallback',symbol,name:meta.name||symbol,sector:profile.sector,useCase:profile.use,drivers:profile.drivers,updatedAt:new Date().toISOString(),analysis:primary,timeframes:tfRows.map(x=>({tf:x.tf,bias:tfBias(x.a),analysis:x.a})),report};
   chartAiCache.set(key,{t:now,v});return v;
 }
+function buildAiQuestionAnswer(question, v){
+  const a=v.analysis||{}, q=String(question||'').trim();
+  const fmt=(x,d=4)=>Number.isFinite(Number(x))?Number(x).toLocaleString('en-US',{maximumFractionDigits:d}):'نامشخص';
+  const bull=Number(a.bullScore||0),bear=Number(a.bearScore||0),risk=Number(a.riskScore||50);
+  const bias=bull>bear+8?'صعودی':bear>bull+8?'نزولی':'خنثی / نیازمند تأیید';
+  const rsi=fmt(a.rsi,1),support=fmt(a.support),resistance=fmt(a.resistance),price=fmt(a.price);
+  const buying=/(خرید|buy|بخر|ورود|لانگ|سرمایه)/i.test(q);
+  const reason=/(چرا|دلیل|رشد|ریزش|علت|why)/i.test(q);
+  const riskQ=/(ریسک|خطر|stop|ضرر)/i.test(q);
+  const asOf=new Date().toLocaleString('fa-IR',{timeZone:'Asia/Tehran'});
+  let answer='در زمان '+asOf+'، قیمت مرجع '+price+' است. این پاسخ از داده زنده و تحلیل چندتایم‌فریمی CryptoPilot ساخته شده و با تغییر بازار باید دوباره محاسبه شود.\n\n';
+  answer+='وضعیت فعلی: '+bias+'. RSI برابر '+rsi+'، امتیاز صعودی '+bull+'/100، امتیاز نزولی '+bear+'/100 و ریسک '+risk+'/100 است. حمایت مهم '+support+' و مقاومت مهم '+resistance+' است.\n\n';
+  answer+='کوتاه‌مدت (15m/1h): '+bias+'. برای حرکت صعودی، عبور و تثبیت بالای مقاومت همراه با حجم بهتر مهم است؛ شکست حمایت می‌تواند فشار فروش را بیشتر کند.\n\n';
+  answer+='میان‌مدت (4h): باید دید حرکت کوتاه‌مدت در این تایم‌فریم تأیید می‌شود یا نه. اگر 4h همسو شود، اعتبار روند بیشتر می‌شود؛ اختلاف 4h با 15m/1h یعنی هنوز تأیید کامل نداریم.\n\n';
+  answer+='بلندمدت (1d): روند روزانه مهم‌تر از نوسان‌های چندساعته است. برای دید بلندمدت، حفظ ساختار بالای حمایت‌های اصلی و بهبود مومنتوم و حجم اهمیت دارد؛ یک حرکت کوتاه‌مدت به‌تنهایی روند روزانه را عوض نمی‌کند.';
+  if(buying) answer+='\n\nدرباره خرید: خرید قطعی یا تضمین سود ارائه نمی‌کنم. اگر هدف ورود است، شرط ورود مهم‌تر از صرفاً قیمت فعلی است: یا شکست و تثبیت معتبر مقاومت با حجم، یا برگشت تأییدشده از حمایت. ورود وسط یک حرکت بدون تأیید، ریسک تعقیب قیمت را بالا می‌برد.';
+  if(reason) answer+='\n\nمهم‌ترین محرک‌ها: مومنتوم، ساختار EMA، حجم معاملات، RSI، حمایت و مقاومت و هم‌جهتی تایم‌فریم‌ها. عوامل بنیادی و اخبار پروژه هم باید جداگانه بررسی شوند؛ تحلیل تکنیکال به‌تنهایی علت بنیادی را ثابت نمی‌کند.';
+  if(riskQ) answer+='\n\nریسک: امتیاز فعلی '+risk+'/100 است. سه هشدار اصلی را زیر نظر بگیر: شکست حمایت، افزایش نوسان/ATR، و تأیید نشدن حرکت در 4h یا 1d.';
+  answer+='\n\nجمع‌بندی: '+bias+'. سناریوی صعودی با تأیید قیمت و حجم قوی‌تر می‌شود و سناریوی نزولی با شکست حمایت و تأیید تایم‌فریم بالاتر. این پاسخ آموزشی است و تضمین سود یا توصیه مالی شخصی نیست.';
+  return answer;
+}
+
+app.post('/api/ai/ask',optionalAuth,aiLimit,async(req,res)=>{
+  const pair=String(req.body?.symbol||'BTCUSDT').toUpperCase();
+  const question=String(req.body?.question||'').trim().slice(0,1000);
+  if(!question)return res.status(400).json({error:'question_required'});
+  if(!symbols[pair])await refreshMarketUniverse();
+  if(!symbols[pair])return res.status(400).json({error:'unsupported_market'});
+  try{
+    const v=await buildChartAiAnalysis(pair,'1h');
+    if(process.env.OPENAI_API_KEY){
+      const context={symbol:v.symbol,sector:v.sector,useCase:v.useCase,analysis:v.analysis,timeframes:v.timeframes};
+      const prompt='You are CryptoPilot AI. Answer the user Persian crypto question using ONLY the supplied live market data and asset metadata. Start from the exact current timestamp. Write naturally and clearly, like an expert answering a normal user. If the question asks whether to buy, do not give a guaranteed yes/no; explain conditions and risks. Always cover short-term, medium-term and long-term views when relevant. Explain RSI, EMA, momentum, volume, support/resistance and timeframe agreement in simple language. Be specific, concise but complete. Never promise profit.\nUser question: '+question+'\nDATA: '+JSON.stringify(context);
+      const rr=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+process.env.OPENAI_API_KEY},body:JSON.stringify({model:process.env.OPENAI_MODEL||'gpt-5.6-luna',input:prompt}),signal:AbortSignal.timeout(20000)});
+      if(rr.ok){const j=await rr.json();return res.json({ok:true,source:'openai',symbol:v.symbol,asOf:new Date().toISOString(),answer:j.output_text||buildAiQuestionAnswer(question,v)});}
+    }
+    res.json({ok:true,source:'technical-engine',symbol:v.symbol,asOf:new Date().toISOString(),answer:buildAiQuestionAnswer(question,v)});
+  }catch{res.status(503).json({error:'ai_question_unavailable'});}
+});
+
 app.get('/api/ai/chart-analysis',optionalAuth,aiLimit,async(req,res)=>{
   const pair=String(req.query.symbol||'BTCUSDT').toUpperCase(),tf=String(req.query.tf||'1h');
   if(!tfMap[tf])return res.status(400).json({error:'unsupported_tf'});
