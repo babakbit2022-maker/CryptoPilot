@@ -358,6 +358,16 @@ async function buildChartAiAnalysis(pair,tf){
   const tfs=['15m','1h','4h','1d'];
   const reports=[];
   await Promise.all(tfs.map(async x=>{try{const j=await getAnalysis(pair,x,250);reports.push({tf:x,provider:j.provider,analysis:j.analysis});}catch{}}));
+  if(!reports.length){
+    try{
+      const universe=await refreshMarketUniverse();
+      const row=universe.find(x=>x.pair===pair||x.symbol===symbol);
+      if(row&&Number.isFinite(Number(row.price))){
+        const ch=Number(row.change24h||0);
+        reports.push({tf:'1h',provider:'market-snapshot',analysis:{price:Number(row.price),rsi:null,ema20:null,ema50:null,ema200:null,atr:null,momentum:ch/100,volumeRatio:null,support:null,resistance:null,bullScore:ch>0?60:40,bearScore:ch<0?60:40,riskScore:50,setup:'MARKET_SNAPSHOT',tradeLevels:{long:null,short:null}}});
+      }
+    }catch{}
+  }
   if(!reports.length)throw new Error('chart_ai_market_unavailable');
   reports.sort((a,b)=>tfs.indexOf(a.tf)-tfs.indexOf(b.tf));
   const primary=reports.find(x=>x.tf===tf)?.analysis||reports.find(x=>x.tf==='1h')?.analysis||reports[0].analysis;
