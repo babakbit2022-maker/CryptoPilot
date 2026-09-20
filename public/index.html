@@ -109,6 +109,14 @@ async function load(){
 document.getElementById('search')?.addEventListener('input',e=>{const q=e.target.value.toLowerCase();filteredRows=rows.filter(x=>(names[x.symbol]||x.name||'').toLowerCase().includes(q)||String(x.symbol||'').toLowerCase().includes(q));currentMarketPage=1;renderMarkets()});
 document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>{if(b.dataset.view==='account'){location.href='/auth.html';return;}document.querySelectorAll('[data-view]').forEach(x=>x.classList.remove('active'));document.querySelectorAll(`[data-view="${b.dataset.view}"]`).forEach(x=>x.classList.add('active'));if(b.dataset.view==='markets')document.querySelector('#marketList')?.scrollIntoView({behavior:'smooth'});else window.scrollTo({top:0,behavior:'smooth'})}));
 load();loadDailyIntelligence();setInterval(load,15000);setInterval(loadDailyIntelligence,60000);
+async function refreshFreshMarketView(){
+ try{
+  const [coins,stats]=await Promise.all([api('/api/coins?refresh=1'),api('/api/market-stats?refresh=1')]);
+  const data=(coins.coins||[]).map(norm);rows=data;filteredRows=data;renderMarkets();
+  if(stats)document.getElementById('marketStatsGrid').innerHTML=[['Market Cap',money(stats.totalMarketCap)],['24h Market Move',percent(stats.averageChange24h)],['24h Volume',money(stats.totalVolume24h)],['BTC Dominance',stats.btcDominance==null?'—':Number(stats.btcDominance).toFixed(2)+'%'],['ETH Dominance',stats.ethDominance==null?'—':Number(stats.ethDominance).toFixed(2)+'%'],['Supply Data',Number(stats.supplyTracked||0)+'/'+Number(stats.pricedAssets||0)+' assets']].map(([a,b])=>'<div class="statusBox"><small>'+a+'</small><strong>'+b+'</strong></div>').join('');
+ }catch{}
+}
+setTimeout(refreshFreshMarketView,800);
 async function loadDailyIntelligence(){
  try{
   const [p,s,g]=await Promise.all([api('/api/daily-picks'),api('/api/scanner?tf=1h'),api('/api/top-gainers')]);
