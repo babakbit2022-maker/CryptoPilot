@@ -405,7 +405,7 @@ async function buildChartAiAnalysis(pair,tf){
   reports.sort((a,b)=>tfs.indexOf(a.tf)-tfs.indexOf(b.tf));
   const primary=reports.find(x=>x.tf===tf)?.analysis||reports.find(x=>x.tf==='1h')?.analysis||reports[0].analysis;
   const payload={symbol,name:meta.name||symbol,sector:profile.sector,useCase:profile.use,drivers:profile.drivers,requestedTf:tf,primary, timeframes:reports.map(x=>({tf:x.tf,analysis:x.analysis}))};
-  if(process.env.OPENAI_API_KEY){
+  try{if(process.env.OPENAI_API_KEY){
     const prompt=`You are CryptoPilot AI, a professional crypto market-analysis assistant. Analyze ONLY the supplied live market data and the supplied asset metadata. The user wants useful, specific and readable analysis, not generic education.
 Return a concise but expert report in Persian with exactly these headings:
 1) جایگاه ارز و کاربرد واقعی
