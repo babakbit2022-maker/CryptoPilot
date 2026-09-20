@@ -108,7 +108,7 @@ async function refreshMarketUniverse(){
       symbols[pair]=symbol;
       symbolMeta.set(pair,{symbol,coingeckoId:c.id,marketCap:c.market_cap||0,marketCapRank:c.market_cap_rank||null,name:c.name||symbol,image:c.image||null});
       const chartable=true;
-      v.push({pair,symbol,name:c.name||symbol,marketCap:c.market_cap||0,marketCapRank:c.market_cap_rank||null,image:c.image||null,change24h:c.price_change_percentage_24h??null,price:c.current_price??null,volume24h:c.total_volume??null,chartable});
+      v.push({pair,symbol,name:c.name||symbol,marketCap:c.market_cap||0,marketCapRank:c.market_cap_rank||null,image:c.image||null,change24h:c.price_change_percentage_24h??null,price:c.current_price??null,volume24h:c.total_volume??null,circulatingSupply:c.circulating_supply??null,totalSupply:c.total_supply??null,maxSupply:c.max_supply??null,chartable});
     }
     // Keep the top-500 CoinGecko market-cap universe; only live Binance USDT pairs are chartable.
     cache.set('__universe',{t:now,v});
@@ -117,7 +117,7 @@ async function refreshMarketUniverse(){
   }catch{
     const previous=cache.get('__universe')?.v;
     if(Array.isArray(previous)&&previous.length>=100)return previous;
-    const fallback=Object.entries(symbols).map(([pair,symbol])=>{const m=symbolMeta.get(pair)||{};return {pair,symbol,name:m.name||symbol,image:m.image||null,marketCap:m.marketCap||0,marketCapRank:m.marketCapRank||null,change24h:null,price:null,volume24h:null,chartable:true};});
+    const fallback=Object.entries(symbols).map(([pair,symbol])=>{const m=symbolMeta.get(pair)||{};return {pair,symbol,name:m.name||symbol,image:m.image||null,marketCap:m.marketCap||0,marketCapRank:m.marketCapRank||null,change24h:null,price:null,volume24h:null,circulatingSupply:null,totalSupply:null,maxSupply:null,chartable:true};});
     cache.set('__universe',{t:now,v:fallback});
     return fallback;
   }finally{universeInflight=null;}}
@@ -183,7 +183,8 @@ app.get('/api/market-stats',async(req,res)=>{try{const all=await refreshMarketUn
     const eth=valid.find(x=>String(x.symbol).toUpperCase()==='ETH');
     const btcDominance=btc&&totalCap?Number(btc.marketCap)/totalCap*100:null;
     const ethDominance=eth&&totalCap?Number(eth.marketCap)/totalCap*100:null;
-    res.json({ok:true,updatedAt:new Date().toISOString(),totalAssets:all.length,totalUniverse:500,pricedAssets:valid.length,totalMarketCap:totalCap,totalVolume24h,averageChange24h:weightedChange,btcDominance,ethDominance,topGainers:gainers,topLosers:losers});}catch{res.status(503).json({error:'market_stats_unavailable'});}});
+    const supplyTracked=valid.filter(x=>Number.isFinite(Number(x.circulatingSupply))).length;
+    res.json({ok:true,updatedAt:new Date().toISOString(),totalAssets:all.length,totalUniverse:500,pricedAssets:valid.length,totalMarketCap:totalCap,totalVolume24h,averageChange24h:weightedChange,btcDominance,ethDominance,supplyTracked,topGainers:gainers,topLosers:losers});}catch{res.status(503).json({error:'market_stats_unavailable'});}});
 app.get('/api/coins',async(req,res)=>{const q=String(req.query.q||'').toLowerCase().trim();const all=await refreshMarketUniverse();const list=all.filter(x=>!q||x.symbol.toLowerCase().includes(q)||String(x.name||'').toLowerCase().includes(q));res.json({updatedAt:new Date().toISOString(),coins:list,count:list.length,totalUniverse:500,universe:'CoinGecko top 500 by market cap',sort:'market_cap_desc'});});
 app.get('/api/ai/market-intelligence',async(req,res)=>{try{const symbol=String(req.query.symbol||'BTCUSDT').toUpperCase();await refreshMarketUniverse();if(!symbols[symbol])return res.status(400).json({error:'unsupported_market'});const tfs=['1m','15m','1h','4h'];const reports=await Promise.all(tfs.map(async tf=>{try{const j=await getAnalysis(symbol,tf);return {tf,provider:j.provider,updatedAt:j.updatedAt,analysis:j.analysis};}catch{return {tf,available:false};}}));const usable=reports.filter(x=>x.analysis);if(!usable.length)return res.status(503).json({error:'market_unavailable'});const bull=Math.round(usable.reduce((n,x)=>n+Number(x.analysis.bullScore||0),0)/usable.length);const bear=Math.round(usable.reduce((n,x)=>n+Number(x.analysis.bearScore||0),0)/usable.length);const risk=Math.round(usable.reduce((n,x)=>n+Number(x.analysis.riskScore||50),0)/usable.length);const trend=bull>=65?'Bullish':bear>=65?'Bearish':'Mixed';const alignment=usable.filter(x=>(trend==='Bullish'?Number(x.analysis.bullScore||0)>=60:trend==='Bearish'?Number(x.analysis.bearScore||0)>=60:true)).length;const latest=usable.find(x=>x.tf==='1h')?.analysis||usable[0].analysis;const reasoning=['Multi-timeframe trend: '+trend+'.','Timeframe alignment: '+alignment+'/'+usable.length+'.','Average bull score: '+bull+'/100; bear score: '+bear+'/100.','Average risk: '+risk+'/100.',latest.rsi!=null?'RSI: '+Number(latest.rsi).toFixed(1)+'.':'RSI unavailable.',latest.volumeRatio!=null?'Volume ratio: '+Number(latest.volumeRatio).toFixed(2)+'x.':'Volume data unavailable.'];res.json({ok:true,symbol,updatedAt:new Date().toISOString(),engine:'CryptoPilot Multi-Timeframe AI',trend,bullScore:bull,bearScore:bear,riskScore:risk,confidence:Math.max(bull,bear),reasoning,reports});}catch(e){res.status(503).json({error:'ai_market_unavailable'});}});
 
