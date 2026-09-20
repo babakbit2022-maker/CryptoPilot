@@ -2,6 +2,7 @@ name: Deploy CryptoPilot to the production site IP
 
 on:
   push:
+    branches: [appdeploy-vps-transfer-20260919]
   workflow_dispatch:
 
 concurrency:
