@@ -500,7 +500,7 @@ app.post('/api/ai/ask',optionalAuth,aiLimit,async(req,res)=>{
       const context={symbol:v.symbol,sector:v.sector,useCase:v.useCase,analysis:v.analysis,timeframes:v.timeframes};
       const prompt='You are CryptoPilot AI. Answer the user Persian crypto question using ONLY the supplied live market data and asset metadata. Start from the exact current timestamp. Write naturally and clearly, like an expert answering a normal user. If the question asks whether to buy, do not give a guaranteed yes/no; explain conditions and risks. Always cover short-term, medium-term and long-term views when relevant. Explain RSI, EMA, momentum, volume, support/resistance and timeframe agreement in simple language. Be specific, concise but complete. Never promise profit.\nUser question: '+question+'\nDATA: '+JSON.stringify(context);
       const rr=await fetch('https://1xai.ir/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+process.env.OPENAI_API_KEY},body:JSON.stringify({model:process.env.OPENAI_MODEL||'gpt-5.6-luna',messages:[{role:'user',content:prompt}]}),signal:AbortSignal.timeout(20000)});
-      if(rr.ok){const j=await rr.json();return res.json({ok:true,source:'1xai',symbol:v.symbol,asOf:new Date().toISOString(),answer:j.output_text||buildAiQuestionAnswer(question,v)});}
+      if(rr.ok){const j=await rr.json();return res.json({ok:true,source:'1xai',symbol:v.symbol,asOf:new Date().toISOString(),answer:(String(j.choices?.[0]?.message?.content||'').trim().length>=200?String(j.choices[0].message.content).trim():buildAiQuestionAnswer(question,v))});}
       }
     }catch{}
     res.json({ok:true,source:'technical-engine',symbol:v.symbol,asOf:new Date().toISOString(),answer:buildAiQuestionAnswer(question,v)});
