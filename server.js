@@ -214,8 +214,8 @@ app.get('/api/scanner',async(req,res)=>{const tf=String(req.query.tf||'15m');if(
 // Premium payment configuration and on-chain verification.
 const TRON_USDT_CONTRACT='TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
 function paymentConfig(){
-  const wallet=String(process.env.PAYMENT_WALLET||process.env.USDT_TRC20_WALLET||process.env.TRC20_WALLET||'').trim();
-  const amount=Number(process.env.PREMIUM_PRICE_USDT||process.env.PAYMENT_AMOUNT_USDT||process.env.PREMIUM_PRICE||'');
+  const wallet=String(process.env.PAYMENT_WALLET||process.env.USDT_TRC20_WALLET||process.env.TRC20_WALLET||process.env.USDT_WALLET||process.env.PAYMENT_ADDRESS||process.env.WALLET_ADDRESS||'').trim();
+  const amount=Number(process.env.PREMIUM_PRICE_USDT||process.env.PAYMENT_AMOUNT_USDT||process.env.PREMIUM_PRICE||process.env.PAYMENT_AMOUNT||process.env.USDT_PRICE||'');
   if(!wallet||!Number.isFinite(amount)||amount<=0)return null;
   return {wallet,amount,network:'TRC20',asset:'USDT',contract:TRON_USDT_CONTRACT,decimals:6};
 }
