@@ -317,6 +317,7 @@ app.post('/api/payment/verify',auth,async(req,res)=>{
   }
 });
 
+app.get('/account.html',(req,res)=>res.sendFile('account.html',{root:'public'}));
 app.get('/robots.txt',(req,res)=>{const base=process.env.PUBLIC_BASE_URL||`${req.protocol}://${req.get('host')}`;res.type('text/plain').send(`User-agent: *\nAllow: /\nSitemap: ${base}/sitemap.xml\n`);});
 app.get('/sitemap.xml',(req,res)=>{const base=(process.env.PUBLIC_BASE_URL||`${req.protocol}://${req.get('host')}`).replace(/\/$/,'');const slugs=['bitcoin','ethereum','solana','binance-coin','xrp','dogecoin','cardano','avalanche','chainlink','polkadot','litecoin','tron'];const urls=['/','/market-analysis','/ai-crypto-chart-analysis',...slugs.map(s=>`/crypto/${s}`)];res.type('application/xml').send(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls.map(u=>`<url><loc>${base}${u}</loc><changefreq>${u==='/'?'daily':'hourly'}</changefreq><priority>${u==='/'?'1.0':'0.8'}</priority></url>`).join('')}</urlset>`);});
 app.get(['/market-analysis','/ai-crypto-chart-analysis'],(req,res)=>res.sendFile('index.html',{root:'public'}));
