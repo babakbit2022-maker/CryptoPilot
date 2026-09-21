@@ -556,7 +556,35 @@ app.get('/api/whales',optionalAuth,apiLimit,async(req,res)=>{
     const net=buy-sell;
     const view={ok:true,symbol:pair,asOf:new Date().toISOString(),window:'latest 1000 exchange aggregate trades',threshold,largeTrades:large,buyNotional:buy,sellNotional:sell,netNotional:net,bias:Math.abs(net)<Math.max(buy+sell,1)*.1?'mixed':net>0?'large-buy flow':'large-sell flow',disclaimer:'These are large exchange trade flows, not proof of specific whale identities or on-chain wallet movements.'};
     whaleCache.set(pair,{t:Date.now(),v:view});return res.json(view);
-  }catch{res.status(503).json({error:'whale_activity_unavailable'});}
+  }catch{
+    try{
+      const cachedAnalysis=cache.get(pair+'1h')?.v;
+      const j=cachedAnalysis||await Promise.race([
+        getAnalysis(pair,'1h'),
+        new Promise((_,reject)=>setTimeout(()=>reject(new Error('fallback_timeout')),6000))
+      ]);
+      const a=j?.analysis||{};
+      const bull=Number(a.bullScore||0),bear=Number(a.bearScore||0);
+      const fallbackBias=Math.abs(bull-bear)<10?'mixed':bull>bear?'large-buy flow':'large-sell flow';
+      return res.json({
+        ok:true,
+        symbol:pair,
+        asOf:new Date().toISOString(),
+        window:'latest live market snapshot',
+        threshold:null,
+        largeTrades:[],
+        buyNotional:null,
+        sellNotional:null,
+        netNotional:null,
+        bias:fallbackBias,
+        provider:'technical-fallback',
+        fallback:true,
+        disclaimer:'Direct large-trade data was unavailable from the exchange endpoint, so CryptoPilot used the latest live technical market snapshot. This is not proof of specific whale identities or on-chain wallet movements.'
+      });
+    }catch{
+      return res.status(503).json({error:'whale_activity_unavailable'});
+    }
+  }
 });
 app.get('/api/screenshot-assets',optionalAuth,apiLimit,async(req,res)=>{
   try{
