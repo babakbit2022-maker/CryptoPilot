@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI Analysis | CryptoPilot AI</title>
+<meta name="description" content="CryptoPilot AI مستقل برای پرسش و تحلیل زنده ارزهای دیجیتال.">
+<link rel="canonical" href="http://87.107.190.74/ai-analysis.html">
+<style>
+:root{--bg:#06101c;--panel:#0b1726;--panel2:#0f1d2f;--line:#1d3148;--text:#f5f8fc;--muted:#8194aa;--cyan:#64e6ff;--green:#35d69b;--red:#ff6378;--yellow:#f5c85b}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(900px 500px at 15% -10%,#123653 0,transparent 60%),radial-gradient(800px 500px at 100% 0,#241b49 0,transparent 55%),var(--bg);color:var(--text);font:14px/1.7 Inter,system-ui,sans-serif}.shell{max-width:1080px;margin:auto;padding:28px 18px 70px}.top{display:flex;align-items:center;justify-content:space-between;gap:15px;margin-bottom:20px}.brand{display:flex;align-items:center;gap:10px}.logo{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;font-weight:950;color:#04101a;background:linear-gradient(135deg,var(--cyan),#8f87ff)}.brand b{display:block;font-size:17px}.brand small{display:block;color:var(--muted);font-size:10px}.back{color:#a9bfd2;text-decoration:none;border:1px solid var(--line);padding:8px 12px;border-radius:10px}.hero,.panel{background:rgba(9,20,33,.9);border:1px solid var(--line);border-radius:22px;box-shadow:0 18px 60px rgba(0,0,0,.22)}.hero{padding:30px;margin-bottom:14px}.eyebrow{color:var(--cyan);font-size:10px;font-weight:900;letter-spacing:1.5px}.hero h1{font-size:clamp(30px,5vw,48px);line-height:1.1;margin:8px 0 10px;letter-spacing:-1.5px}.hero p{color:#9eb0c3;max-width:760px;margin:0}.controls{padding:18px}.label{color:var(--muted);font-size:10px;font-weight:800;margin-bottom:7px}.row{display:grid;grid-template-columns:240px 1fr auto;gap:9px}.select,.question{width:100%;background:#071320;color:#fff;border:1px solid var(--line);border-radius:11px;padding:12px;outline:none}.question{min-width:0}.btn{border:0;border-radius:11px;padding:12px 20px;background:linear-gradient(135deg,#48b9ff,#8f87ff);color:#06101c;font-weight:900;cursor:pointer}.btn:disabled{opacity:.55;cursor:not-allowed}.chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}.chip{border:1px solid #29425b;background:#0a1929;color:#c5d4e3;padding:7px 10px;border-radius:9px;font-size:10px;cursor:pointer}.status{margin-top:10px;color:var(--muted);font-size:10px}.status.ready{color:#91dcbf}.answer{margin-top:14px}.answerHead{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:15px 17px;border-bottom:1px solid var(--line)}.answerHead b{font-size:15px}.engine{font-size:9px;color:#91dcbf;border:1px solid #24503f;background:#0a211b;padding:5px 8px;border-radius:99px}.answerBody{padding:17px}.loading{color:#9eb0c3}.text{white-space:pre-wrap;color:#c7d4e1;line-height:1.9}.facts{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}.fact{background:#081624;border:1px solid #182d43;border-radius:11px;padding:11px}.fact small{display:block;color:var(--muted);font-size:9px}.fact b{display:block;margin-top:3px;font-size:13px}.note{padding:12px 17px;border-top:1px solid var(--line);color:#71869c;font-size:9px}.hidden{display:none!important}@media(max-width:760px){.row{grid-template-columns:1fr}.facts{grid-template-columns:1fr 1fr}.top{align-items:flex-start}}@media(max-width:430px){.facts{grid-template-columns:1fr}}
+</style>
+</head>
+<body><div class="shell">
+<header class="top"><div class="brand"><div class="logo">CP</div><div><b>CryptoPilot AI</b><small>Independent AI Analysis</small></div></div><a class="back" href="/">← داشبورد</a></header>
+<section class="hero"><div class="eyebrow">CRYPTO AI ANALYSIS</div><h1>تحلیل هوشمند، مستقل و زنده</h1><p>ارز را انتخاب کن، سؤال خودت را بپرس و CryptoPilot AI پاسخ را بر اساس داده بازار و وضعیت فعلی همان ارز ارائه می‌کند.</p></section>
+<section class="panel controls">
+<div class="label">ارز موردنظر</div>
+<div class="row"><select id="coin" class="select"><option>در حال دریافت ارزها…</option></select><input id="question" class="question" placeholder="مثلاً: نظرت درباره خرید DOGE چیه؟ چرا ممکن است رشد یا ریزش کند؟"><button id="ask" class="btn">تحلیل کن</button></div>
+<div class="chips"><button class="chip" data-q="نظرت درباره خرید این ارز چیه؟ کوتاه‌مدت، میان‌مدت و بلندمدت را توضیح بده.">خرید این ارز چطور است؟</button><button class="chip" data-q="چرا ممکن است این ارز رشد یا ریزش کند؟ مهم‌ترین عوامل فعلی را توضیح بده.">چرا ممکن است رشد یا ریزش کند؟</button><button class="chip" data-q="ریسک این ارز الان چقدر است و چه چیزهایی را باید زیر نظر داشته باشم؟">ریسک و نکات مهم</button></div>
+<div id="status" class="status">در حال آماده‌سازی داده‌های بازار…</div>
+</section>
+<section id="answer" class="panel answer hidden"></section>
+</div>
+<script>
+const $=id=>document.getElementById(id), money=n=>n==null||!Number.isFinite(Number(n))?'—':'$'+Number(n).toLocaleString(undefined,{maximumFractionDigits:Number(n)<1?8:2});
+let coins=[];
+async function api(path){const r=await fetch(path,{cache:'no-store'});if(!r.ok)throw Error(r.status);return r.json()}
+function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function selected(){return ($('coin').value||'BTC').toUpperCase()}
+async function loadCoins(){
+ try{
+  const d=await api('/api/coins');coins=d.coins||[];
+  $('coin').innerHTML=coins.map(x=>'<option value="'+esc(x.symbol)+'">'+esc(x.name||x.symbol)+' ('+esc(x.symbol)+')</option>').join('');
+  const q=new URLSearchParams(location.search).get('symbol');if(q)$('coin').value=q.replace(/USDT$/i,'').toUpperCase();
+  $('status').textContent='DATA READY · '+coins.length+' assets available';$('status').className='status ready';
+ }catch{$('status').textContent='داده زنده فعلاً در دسترس نیست؛ دوباره تلاش کن.'}
+}
+async function ask(q){
+ q=(q||$('question').value).trim();if(!q)return;
+ const btn=$('ask'),box=$('answer');btn.disabled=true;box.classList.remove('hidden');
+ const symbol=selected();
+ const c=coins.find(x=>String(x.symbol).toUpperCase()===symbol);
+ box.innerHTML='<div class="answerHead"><b>CryptoPilot AI · '+esc(symbol)+'</b><span class="engine">ANALYZING</span></div><div class="answerBody"><div class="loading">در حال بررسی قیمت، حجم، مومنتوم، حمایت/مقاومت و تایم‌فریم‌ها…</div></div>';
+ try{
+  const r=await fetch('/api/ai/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:symbol+'USDT',question:q})});
+  const j=await r.json();if(!r.ok||!j.ok)throw Error(j.error||'ask');
+  box.innerHTML='<div class="answerHead"><b>پاسخ CryptoPilot AI · '+esc(symbol)+'</b><span class="engine">AI ANALYSIS</span></div><div class="answerBody"><div class="facts"><div class="fact"><small>Price</small><b>'+money(c?.price)+'</b></div><div class="fact"><small>24h Change</small><b>'+((Number(c?.change24h)>=0?'+':'')+(c?.change24h==null?'—':Number(c.change24h).toFixed(2)+'%'))+'</b></div><div class="fact"><small>24h Volume</small><b>'+money(c?.volume24h)+'</b></div><div class="fact"><small>Market Cap</small><b>'+money(c?.marketCap)+'</b></div></div><div class="text" style="margin-top:15px">'+esc(j.answer||'پاسخی دریافت نشد.')+'</div></div><div class="note">تحلیل آموزشی و مبتنی بر داده‌های بازار است؛ تضمین رشد/ریزش یا توصیه مالی شخصی نیست.</div>';
+ }catch{box.innerHTML='<div class="answerHead"><b>CryptoPilot AI</b></div><div class="answerBody"><div class="loading">تحلیل سؤال فعلاً در دسترس نیست. لطفاً چند لحظه بعد دوباره امتحان کن.</div></div>'}
+ finally{btn.disabled=false}
+}
+$('ask').onclick=()=>ask();$('question').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();ask()}};document.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{ $('question').value=b.dataset.q;ask(b.dataset.q)});
+loadCoins();
+</script></body></html>
