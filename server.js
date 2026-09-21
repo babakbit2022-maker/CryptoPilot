@@ -301,7 +301,7 @@ async function computeWhaleIntelligence(){
         const oiChange12h=oldOI&&newOI?((newOI-oldOI)/oldOI)*100:null;
         const tr=Array.isArray(taker)?taker:[]; 
         const buy=tr.reduce((a,x)=>a+Number(x.buyVol||x.buyVolValue||0),0);
-        const sell=tr.reduce((a,x)=>a+Number(xsellVol||x.sellVolValue||0),0);
+        const sell=tr.reduce((a,x)=>a+Number(x.sellVol||x.sellVolValue||0),0);
         const takerImbalance12h=(buy+sell)?(buy-sell)/(buy+sell):0;
         const f=Array.isArray(fund)&&fund[0]?Number(fund[0].fundingRate):null;
         const a=Array.isArray(topAcc)&&topAcc[0]?topAcc[0]:null;
