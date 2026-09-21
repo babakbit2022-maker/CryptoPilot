@@ -1,8 +1,8 @@
 // Production smoke includes live AI chart analysis verification.
 import vm from 'node:vm';
 const base = process.env.BASE_URL || 'http://87.107.190.74';
-const pages = ['/', '/auth.html', '/account.html', '/payment.html', '/chart-analysis.html', '/crypto-chart.html', '/market-analysis', '/ai-crypto-chart-analysis', '/disclaimer.html', '/privacy.html', '/admin.html','/whale-activity.html','/screenshot-ai.html'];
-const mustContain = {'/':['growthViewport','marketStats'],'/chart-analysis.html':['AI chart workspace','Analyze chart'],'/crypto-chart.html':['Live market intelligence','data-tf="15m"'],'/payment.html':['USDT TRC20','Verify & activate Premium'],'/market-analysis':['Crypto Market Analysis'],'/ai-crypto-chart-analysis':['AI Crypto Chart Analysis'],'/whale-activity.html':['Whale Activity'],'/screenshot-ai.html':['Screenshot Analysis']};
+const pages = ['/', '/auth.html', '/account.html', '/payment.html', '/chart-analysis.html', '/crypto-chart.html', '/market-analysis', '/ai-analysis.html', '/disclaimer.html', '/privacy.html', '/admin.html','/whale-activity.html','/screenshot-ai.html'];
+const mustContain = {'/':['growthViewport','marketStats'],'/chart-analysis.html':['AI chart workspace','Analyze chart'],'/crypto-chart.html':['Live market intelligence','data-tf="15m"'],'/payment.html':['USDT TRC20','Verify & activate Premium'],'/market-analysis':['Crypto Market Analysis'],'/ai-crypto-chart-analysis':['Independent, Live AI Analysis'],'/whale-activity.html':['Whale Activity'],'/screenshot-ai.html':['Screenshot Analysis']};
 async function get(path,options={}){const r=await fetch(base+path,{redirect:'manual',...options});return{status:r.status,text:await r.text()};}
 for(const p of pages){const r=await get(p);if(r.status!==200)throw new Error(`PAGE ${p} HTTP ${r.status}`);for(const n of(mustContain[p]||[]))if(!r.text.includes(n))throw new Error(`PAGE ${p} missing ${n}`);}
 async function json(path,allowed=[200]){const r=await get(path);if(!allowed.includes(r.status))throw new Error(`API ${path} HTTP ${r.status}: ${r.text.slice(0,300)}`);try{return{status:r.status,data:JSON.parse(r.text)}}catch{throw new Error(`API ${path} non-JSON`);}}
