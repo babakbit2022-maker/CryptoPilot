@@ -526,10 +526,23 @@ app.get('/api/whales',optionalAuth,apiLimit,async(req,res)=>{
   const cached=whaleCache.get(pair);
   if(cached&&Date.now()-cached.t<30000)return res.json(cached.v);
   try{
-    const u='https://api.binance.com/api/v3/aggTrades?symbol='+encodeURIComponent(pair)+'&limit=1000';
-    const r=await fetch(u,{signal:AbortSignal.timeout(10000)});
-    if(!r.ok)throw Error('binance');
-    const rows=await r.json();
+    const providers=[
+      'https://data-api.binance.vision/api/v3/aggTrades?symbol='+encodeURIComponent(pair)+'&limit=1000',
+      'https://api.binance.com/api/v3/aggTrades?symbol='+encodeURIComponent(pair)+'&limit=1000',
+      'https://api1.binance.com/api/v3/aggTrades?symbol='+encodeURIComponent(pair)+'&limit=1000',
+      'https://api2.binance.com/api/v3/aggTrades?symbol='+encodeURIComponent(pair)+'&limit=1000'
+    ];
+    let rows=null;
+    for(const u of providers){
+      try{
+        const r=await marketFetch(u,{headers:{accept:'application/json'},signal:AbortSignal.timeout(10000)});
+        if(r.ok){
+          const data=await r.json();
+          if(Array.isArray(data)&&data.length){rows=data;break;}
+        }
+      }catch{}
+    }
+    if(!Array.isArray(rows)||!rows.length)throw Error('binance');
     const trades=rows.map(x=>{
       const price=Number(x.p),qty=Number(x.q),notional=price*qty;
       return {time:new Date(Number(x.T)).toISOString(),price,quantity:qty,notional,side:x.m?'SELL':'BUY'};
