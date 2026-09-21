@@ -1,1 +1,152 @@
-<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CryptoPilot AI — Whale Activity</title><style>body{margin:0;background:#06101c;color:#f5f8fc;font:14px system-ui;padding:20px}.wrap{max-width:1100px;margin:auto}.panel{background:#0b1726;border:1px solid #1d3148;border-radius:18px;padding:20px;margin-bottom:14px}.top{display:flex;justify-content:space-between;gap:12px;align-items:center}.btn{background:#0d2235;color:#64e6ff;border:1px solid #29445d;border-radius:10px;padding:9px 12px;text-decoration:none}select{background:#081624;color:#fff;border:1px solid #1d3148;border-radius:10px;padding:10px}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}.box{background:#081624;border:1px solid #182d43;border-radius:12px;padding:12px}.box small{display:block;color:#8194aa}.box b{display:block;margin-top:4px}.table{width:100%;border-collapse:collapse;margin-top:12px}.table th,.table td{padding:10px;border-bottom:1px solid #17283b;text-align:right;font-size:11px}.buy{color:#35d69b}.sell{color:#ff6378}.muted{color:#8194aa;font-size:10px;line-height:1.7}@media(max-width:700px){.grid{grid-template-columns:1fr 1fr}.table{font-size:10px}}</style></head><body><div class="wrap"><div class="panel top"><div><h2 style="margin:0">🐋 فعالیت نهنگ‌ها</h2><div class="muted">ردیابی معاملات بزرگ اخیر در صرافی؛ این بخش هویت کیف‌پول‌های نهنگ را ادعا نمی‌کند.</div></div><a class="btn" href="/">← داشبورد</a></div><div class="panel"><select id="coin"></select><div class="grid" style="margin-top:12px"><div class="box"><small>جریان خرید بزرگ</small><b id="buy">—</b></div><div class="box"><small>جریان فروش بزرگ</small><b id="sell">—</b></div><div class="box"><small>خالص جریان</small><b id="net">—</b></div><div class="box"><small>وضعیت</small><b id="bias">در حال بررسی</b></div></div><div id="time" class="muted" style="margin-top:10px"></div></div><div class="panel"><h3 style="margin-top:0">آخرین معاملات بزرگ</h3><div id="list" class="muted">در حال دریافت داده…</div></div></div><script>const coin=document.getElementById('coin');let pair=new URLSearchParams(location.search).get('symbol')||'BTCUSDT';const fmt=n=>'$'+Number(n||0).toLocaleString(undefined,{maximumFractionDigits:0});async function coins(){try{const j=await fetch('/api/coins').then(r=>r.json());coin.innerHTML=(j.coins||[]).slice(0,100).map(x=>'<option value="'+x.pair+'">'+(x.name||x.symbol)+'</option>').join('');if((j.coins||[]).some(x=>x.pair===pair))coin.value=pair}catch{coin.innerHTML='<option value="BTCUSDT">Bitcoin</option>'}}async function load(){pair=coin.value||pair;history.replaceState(null,'','/whale-activity.html?symbol='+encodeURIComponent(pair));const box=document.getElementById('list');try{const j=await fetch('/api/whales?symbol='+encodeURIComponent(pair)+'&_='+Date.now()).then(r=>r.json());if(!j.ok)throw Error();document.getElementById('buy').textContent=fmt(j.buyNotional);document.getElementById('sell').textContent=fmt(j.sellNotional);document.getElementById('net').textContent=(j.netNotional>=0?'+':'-')+fmt(Math.abs(j.netNotional));document.getElementById('bias').textContent=j.bias;document.getElementById('time').textContent='آخرین بررسی: '+new Date(j.asOf).toLocaleString('fa-IR')+' · آستانه معامله بزرگ: '+fmt(j.threshold);box.innerHTML='<table class="table"><tr><th>زمان</th><th>جهت</th><th>قیمت</th><th>ارزش معامله</th></tr>'+j.largeTrades.map(x=>'<tr><td>'+new Date(x.time).toLocaleTimeString('fa-IR')+'</td><td class="'+(x.side==='BUY'?'buy':'sell')+'">'+x.side+'</td><td>'+Number(x.price).toLocaleString(undefined,{maximumFractionDigits:8})+'</td><td>'+fmt(x.notional)+'</td></tr>').join('')+'</table><p class="muted">'+j.disclaimer+'</p>';}catch{box.textContent='داده فعالیت نهنگ‌ها فعلاً در دسترس نیست.'}}coin.addEventListener('change',load);coins().then(load);setInterval(load,30000)</script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CryptoPilot AI — Whale Intelligence</title>
+<style>
+:root{--bg:#06101c;--panel:#0b1726;--panel2:#081624;--line:#1d3148;--text:#f5f8fc;--muted:#8194aa;--cyan:#64e6ff;--green:#35d69b;--red:#ff6378;--yellow:#f5c85b}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(900px 500px at 20% -10%,#123653 0,transparent 60%),var(--bg);color:var(--text);font:14px/1.55 Inter,system-ui,-apple-system,Segoe UI,sans-serif}.wrap{max-width:1180px;margin:auto;padding:22px}.panel{background:rgba(9,20,33,.9);border:1px solid var(--line);border-radius:20px;padding:20px;margin-bottom:14px}.top{display:flex;justify-content:space-between;gap:18px;align-items:center}.eyebrow{color:var(--cyan);font-size:10px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase}.top h1{margin:5px 0 6px;font-size:28px;letter-spacing:-.7px}.muted{color:var(--muted);font-size:11px;line-height:1.7}.btn{background:#0d2235;color:var(--cyan);border:1px solid #29445d;border-radius:10px;padding:9px 12px;text-decoration:none;white-space:nowrap}.windowbar{display:flex;gap:8px;flex-wrap:wrap}.window{border:1px solid var(--line);background:#081624;border-radius:10px;padding:9px 13px;font-size:11px}.window.active{border-color:#3c718d;background:#10283b;color:var(--cyan)}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}.box{background:var(--panel2);border:1px solid #182d43;border-radius:13px;padding:14px}.box small{display:block;color:var(--muted);font-size:10px}.box b{display:block;margin-top:4px;font-size:18px}.buy{color:var(--green)}.sell{color:var(--red)}.neutral{color:var(--yellow)}.headline{display:flex;justify-content:space-between;gap:12px;align-items:end;margin-bottom:12px}.headline h2{margin:0;font-size:17px}.badge{border:1px solid #24503f;background:#0a211b;color:#a9e9d0;border-radius:99px;padding:5px 9px;font-size:9px;font-weight:800}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.card{background:linear-gradient(180deg,#0e1d2d,#091522);border:1px solid var(--line);border-radius:15px;padding:14px}.cardHead{display:flex;justify-content:space-between;gap:8px}.symbol{font-weight:900}.amount{font-size:18px;font-weight:900;margin:8px 0 3px}.meta{font-size:10px;color:var(--muted)}.reason{margin-top:9px;color:#b7c7d8;font-size:11px;line-height:1.65}.status{display:inline-block;margin-top:9px;padding:4px 7px;border-radius:7px;background:#101f2e;border:1px solid #20384e;font-size:9px;font-weight:800}.status.acc{color:var(--green)}.status.dist{color:var(--red)}.status.mix{color:var(--yellow)}.status.unknown{color:var(--muted)}.timeline{display:grid;gap:8px}.event{display:grid;grid-template-columns:90px 90px 1fr 130px;gap:10px;align-items:center;background:var(--panel2);border:1px solid #182d43;border-radius:12px;padding:11px}.event small{color:var(--muted);font-size:9px}.event b{font-size:11px}.source{font-size:9px;color:var(--muted)}.legend{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.legend div{background:#081624;border:1px solid #182d43;border-radius:12px;padding:11px;font-size:10px}.legend strong{display:block;margin-bottom:3px}.loading{padding:18px;text-align:center;color:var(--muted)}@media(max-width:850px){.grid{grid-template-columns:1fr 1fr}.cards{grid-template-columns:1fr 1fr}.event{grid-template-columns:70px 80px 1fr}}@media(max-width:600px){.wrap{padding:13px}.top{align-items:flex-start}.top h1{font-size:23px}.grid,.cards,.legend{grid-template-columns:1fr}.event{grid-template-columns:1fr}.btn{font-size:10px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<section class="panel top">
+<div>
+<div class="eyebrow">CryptoPilot AI · Automatic Market Scan</div>
+<h1>🐋 Whale Intelligence</h1>
+<div class="muted">You do not need to choose a coin. CryptoPilot scans the market automatically and explains unusually large trading activity in simple language.</div>
+</div>
+<a class="btn" href="/">← Dashboard</a>
+</section>
+
+<section class="panel">
+<div class="headline"><div><h2>What happened recently?</h2><div class="muted">The scan uses the largest recent exchange trades available to CryptoPilot, then groups them by time window.</div></div><span id="scanStatus" class="badge">SCANNING…</span></div>
+<div class="windowbar"><span class="window active">Last 1 hour</span><span class="window">Last 6 hours</span><span class="window">Last 12 hours</span><span class="window">Last 24 hours</span></div>
+<div id="summary" class="grid" style="margin-top:12px"><div class="box"><small>Large buying</small><b>—</b></div><div class="box"><small>Large selling</small><b>—</b></div><div class="box"><small>Net large flow</small><b>—</b></div><div class="box"><small>AI reading</small><b>Scanning…</b></div></div>
+<div id="asOf" class="muted" style="margin-top:10px"></div>
+</section>
+
+<section class="panel">
+<div class="headline"><div><h2>AI's plain-English reading</h2><div class="muted">This is an interpretation of the data, not a claim that every large transfer belongs to one whale.</div></div></div>
+<div id="aiReading" class="loading">Scanning recent market activity…</div>
+</section>
+
+<section class="panel">
+<div class="headline"><div><h2>Biggest unusual moves</h2><div class="muted">The most notable large trades found during the automatic scan.</div></div><span id="eventCount" class="badge">—</span></div>
+<div id="cards" class="cards"><div class="loading">Collecting live data…</div></div>
+</section>
+
+<section class="panel">
+<div class="headline"><div><h2>Recent large-trade timeline</h2><div class="muted">Each row shows what CryptoPilot actually observed.</div></div></div>
+<div id="timeline" class="timeline"><div class="loading">Waiting for live results…</div></div>
+</section>
+
+<section class="panel">
+<div class="headline"><div><h2>How to read this</h2><div class="muted">We keep the language simple so you do not need trading experience.</div></div></div>
+<div class="legend">
+<div><strong class="buy">🟢 Large buying</strong>Large trades were more often on the buy side. This can show stronger demand, but it does not guarantee that price will rise.</div>
+<div><strong class="sell">🔴 Large selling</strong>Large trades were more often on the sell side. This can show stronger selling pressure, but it does not guarantee a drop.</div>
+<div><strong class="neutral">🟡 Unclear</strong>Transfers or trades alone are not enough to prove that a whale is accumulating or selling. CryptoPilot marks the situation as unclear when evidence is weak.</div>
+</div>
+<div class="muted" style="margin-top:12px">Important: a large exchange transfer is not proof of a whale buying or selling. It may also be an internal exchange move, custody transfer, market-maker activity, or another operational transaction. When the evidence is not strong enough, CryptoPilot says “Unconfirmed” instead of guessing.</div>
+</section>
+</div>
+
+<script>
+const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const money=n=>Number.isFinite(Number(n))?'$'+Number(n).toLocaleString(undefined,{maximumFractionDigits:0}):'—';
+const shortMoney=n=>{const v=Number(n);if(!Number.isFinite(v))return '—';if(v>=1e9)return '$'+(v/1e9).toFixed(2)+'B';if(v>=1e6)return '$'+(v/1e6).toFixed(2)+'M';if(v>=1e3)return '$'+(v/1e3).toFixed(1)+'K';return money(v)};
+const topN=(a,n)=>a.slice().sort((x,y)=>y.notional-x.notional).slice(0,n);
+let universe=[],allEvents=[],lastScan=0;
+
+async function getJSON(url){
+ const r=await fetch(url,{cache:'no-store',credentials:'same-origin',signal:AbortSignal.timeout(12000)});
+ if(!r.ok)throw Error('HTTP '+r.status);
+ return r.json();
+}
+async function loadUniverse(){
+ const j=await getJSON('/api/coins');
+ return (j.coins||[]).filter(x=>x.pair).slice(0,30);
+}
+async function loadPair(x){
+ try{
+  const j=await getJSON('/api/whales?symbol='+encodeURIComponent(x.pair)+'&_='+Date.now());
+  if(!j.ok)return null;
+  return {...j,coin:x.symbol||x.pair.replace('USDT',''),name:x.name||x.symbol||x.pair};
+ }catch{return null}
+}
+function classify(events,windowMs){
+ const now=Date.now(), rows=events.filter(x=>now-Date.parse(x.time)<=windowMs);
+ const buy=rows.filter(x=>x.side==='BUY').reduce((s,x)=>s+x.notional,0);
+ const sell=rows.filter(x=>x.side==='SELL').reduce((s,x)=>s+x.notional,0);
+ const net=buy-sell, total=buy+sell;
+ let label='Unconfirmed',cls='unknown';
+ if(total>0 && Math.abs(net)/total>=.2){label=net>0?'More large buying':'More large selling';cls=net>0?'acc':'dist'}
+ return {rows,buy,sell,net,label,cls};
+}
+function windowText(ms){if(ms===3600000)return '1h';if(ms===21600000)return '6h';if(ms===43200000)return '12h';return '24h'}
+function renderWindow(ms=3600000){
+ const c=classify(allEvents,ms);
+ document.getElementById('summary').innerHTML=[
+  ['Large buying',shortMoney(c.buy),c.buy?'buy':''],
+  ['Large selling',shortMoney(c.sell),c.sell?'sell':''],
+  ['Net large flow',(c.net>=0?'+':'−')+shortMoney(Math.abs(c.net)),c.net>0?'buy':c.net<0?'sell':'neutral'],
+  ['AI reading',c.label,c.cls]
+ ].map(([a,b,cl])=>'<div class="box"><small>'+a+'</small><b class="'+cl+'">'+esc(b)+'</b></div>').join('');
+ const coverage=c.rows.length;
+ const top=topN(c.rows,3);
+ let reading='';
+ if(!coverage) reading='No large-trade records were found for this time window. CryptoPilot will not invent a result.';
+ else if(c.label==='More large buying') reading='Large trades lean toward buying in the available data. That can mean stronger demand, but we need price and broader market confirmation before calling it a real accumulation trend.';
+ else if(c.label==='More large selling') reading='Large trades lean toward selling in the available data. That can mean stronger selling pressure, but it does not by itself prove a whale is exiting.';
+ else reading='The large-trade picture is mixed. There is not enough evidence to confidently call this accumulation or distribution.';
+ if(top.length)reading+=' The biggest recent activity includes '+top.map(x=>x.coin+' ('+shortMoney(x.notional)+', '+x.side.toLowerCase()+')').join(', ')+'.';
+ document.getElementById('aiReading').innerHTML='<strong>'+esc(windowText(ms))+' view:</strong> '+esc(reading)+'<div class="muted" style="margin-top:7px">Large trades found in this window: '+coverage+' · Automatic market scan</div>';
+}
+function renderEvents(){
+ const events=allEvents.slice().sort((a,b)=>b.notional-a.notional);
+ document.getElementById('eventCount').textContent=events.length+' observed';
+ const notable=events.slice(0,9);
+ document.getElementById('cards').innerHTML=notable.length?notable.map(x=>{
+   const direction=x.side==='BUY'?'buy':'sell';
+   const title=x.side==='BUY'?'Large buy':'Large sell';
+   const status=x.side==='BUY'?'acc':'dist';
+   return '<article class="card"><div class="cardHead"><span class="symbol">'+esc(x.coin)+'</span><span class="'+direction+'">'+title+'</span></div><div class="amount">'+shortMoney(x.notional)+'</div><div class="meta">'+new Date(x.time).toLocaleString()+'</div><div class="reason">'+(x.side==='BUY'?'A large market trade was observed on the buy side.':'A large market trade was observed on the sell side.')+' This is evidence of a large trade, not proof of the trader’s identity or intention.</div><span class="status '+status+'">'+(x.side==='BUY'?'BUY PRESSURE':'SELL PRESSURE')+'</span></article>';
+ }).join(''):'<div class="loading">No notable large trades were confirmed.</div>';
+ document.getElementById('timeline').innerHTML=events.slice(0,18).map(x=>'<div class="event"><small>'+new Date(x.time).toLocaleTimeString()+'</small><b>'+esc(x.coin)+'</b><span class="'+(x.side==='BUY'?'buy':'sell')+'">'+x.side+' · '+shortMoney(x.notional)+'</span><span class="source">Exchange trade flow · '+esc(x.source||'Binance')+'</span></div>').join('')||'<div class="loading">No recent events.</div>';
+}
+async function scan(){
+ const started=Date.now();
+ document.getElementById('scanStatus').textContent='SCANNING…';
+ try{
+  universe=await loadUniverse();
+  const results=[];
+  for(let i=0;i<universe.length;i+=6){
+    const batch=await Promise.all(universe.slice(i,i+6).map(loadPair));
+    results.push(...batch.filter(Boolean));
+  }
+  const seen=new Set();allEvents=[];
+  for(const r of results){
+    for(const t of (r.largeTrades||[])){
+      const key=r.coin+'|'+t.time+'|'+t.notional+'|'+t.side;
+      if(seen.has(key))continue;seen.add(key);
+      allEvents.push({...t,coin:r.coin,name:r.name,source:'Binance'});
+    }
+  }
+  allEvents.sort((a,b)=>Date.parse(b.time)-Date.parse(a.time));
+  lastScan=Date.now();
+  renderWindow(3600000);renderEvents();
+  document.getElementById('asOf').textContent='Last checked: '+new Date().toLocaleString()+' · Market scan: '+universe.length+' assets · Data available from the exchange-trade feed';
+  document.getElementById('scanStatus').textContent='LIVE SCAN';
+ }catch(e){
+  document.getElementById('scanStatus').textContent='DATA UNAVAILABLE';
+  document.getElementById('aiReading').textContent='Live whale data is temporarily unavailable. No result is being guessed or filled with fake data.';
+ }
+}
+document.querySelectorAll('.window').forEach((el,i)=>el.addEventListener('click',()=>{document.querySelectorAll('.window').forEach(x=>x.classList.remove('active'));el.classList.add('active');renderWindow([3600000,21600000,43200000,86400000][i]);}));
+scan();
+setInterval(scan,60000);
+</script>
+</body>
+</html>
