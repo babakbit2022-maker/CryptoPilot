@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>AI Analysis | CryptoPilot AI</title>
-<meta name="description" content="CryptoPilot AI مستقل برای پرسش و تحلیل زنده ارزهای دیجیتال.">
+<meta name="description" content="Independent live cryptocurrency questions and AI analysis with CryptoPilot AI.">
 <link rel="canonical" href="http://87.107.190.74/ai-analysis.html">
 <style>
 :root{--bg:#06101c;--panel:#0b1726;--panel2:#0f1d2f;--line:#1d3148;--text:#f5f8fc;--muted:#8194aa;--cyan:#64e6ff;--green:#35d69b;--red:#ff6378;--yellow:#f5c85b}
@@ -44,7 +44,7 @@ async function ask(q){
  try{
   const r=await fetch('/api/ai/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:symbol+'USDT',question:q})});
   const j=await r.json();if(!r.ok||!j.ok)throw Error(j.error||'ask');
-  box.innerHTML='<div class="answerHead"><b>پاسخ CryptoPilot AI · '+esc(symbol)+'</b><span class="engine">AI ANALYSIS</span></div><div class="answerBody"><div class="facts"><div class="fact"><small>Price</small><b>'+money(c?.price)+'</b></div><div class="fact"><small>24h Change</small><b>'+((Number(c?.change24h)>=0?'+':'')+(c?.change24h==null?'—':Number(c.change24h).toFixed(2)+'%'))+'</b></div><div class="fact"><small>24h Volume</small><b>'+money(c?.volume24h)+'</b></div><div class="fact"><small>Market Cap</small><b>'+money(c?.marketCap)+'</b></div></div><div class="text" style="margin-top:15px">'+esc(j.answer||'No answer was received.')+'</div></div><div class="note">Educational analysis based on market data; it does not guarantee gains/losses or constitute personalized financial advice.</div>';
+  box.innerHTML='<div class="answerHead"><b>CryptoPilot AI Answer · '+esc(symbol)+'</b><span class="engine">AI ANALYSIS</span></div><div class="answerBody"><div class="facts"><div class="fact"><small>Price</small><b>'+money(c?.price)+'</b></div><div class="fact"><small>24h Change</small><b>'+((Number(c?.change24h)>=0?'+':'')+(c?.change24h==null?'—':Number(c.change24h).toFixed(2)+'%'))+'</b></div><div class="fact"><small>24h Volume</small><b>'+money(c?.volume24h)+'</b></div><div class="fact"><small>Market Cap</small><b>'+money(c?.marketCap)+'</b></div></div><div class="text" style="margin-top:15px">'+esc(j.answer||'No answer was received.')+'</div></div><div class="note">Educational analysis based on market data; it does not guarantee gains/losses or constitute personalized financial advice.</div>';
  }catch{box.innerHTML='<div class="answerHead"><b>CryptoPilot AI</b></div><div class="answerBody"><div class="loading">The AI analysis is temporarily unavailable. Please try again in a moment.</div></div>'}
  finally{btn.disabled=false}
 }
