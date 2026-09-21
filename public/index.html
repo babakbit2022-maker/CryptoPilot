@@ -98,10 +98,11 @@ function openChart(symbol){location.href=`/crypto-chart.html?symbol=${encodeURIC
 function setLive(ok,txt){document.getElementById('liveText').textContent=txt;document.querySelector('.led').style.background=ok?'var(--green)':'var(--red)';document.querySelector('.led').style.boxShadow=ok?'0 0 13px var(--green)':'0 0 13px var(--red)'}
 async function load(){
  try{
-  const [coins,stats,status]=await Promise.all([
+  const [coins,stats,status,scanner]=await Promise.all([
    api('/api/coins'),
    api('/api/market-stats').catch(()=>null),
-   api('/api/market-status').catch(()=>null)
+   api('/api/market-status').catch(()=>null),
+   api('/api/scanner?tf=15m').catch(()=>null)
   ]);
   const data=(coins.coins||[]).map(norm);rows=data;filteredRows=data;
   if(stats){document.getElementById('marketStatsGrid').innerHTML=[['Assets',stats.totalAssets+'/500'],['Market Cap',Number(stats.totalMarketCap||0).toLocaleString(undefined,{maximumFractionDigits:0})],['Avg 24h',percent(stats.averageChange24h)],['Priced',stats.pricedAssets]].map(([a,b])=>'<div class="statusBox"><small>'+a+'</small><strong>'+b+'</strong></div>').join('')}
@@ -110,11 +111,10 @@ async function load(){
   const b=data.find(x=>x.symbol==='BTC'),e=data.find(x=>x.symbol==='ETH');
   document.getElementById('btcMini').textContent=b?money(b.price):'—';document.getElementById('ethMini').textContent=e?money(e.price):'—';document.getElementById('providerMini').textContent=b?.provider||'—';document.getElementById('timeMini').textContent=new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
   const avg=data.length?Math.round(data.reduce((s,x)=>s+Number(x.bullScore||0),0)/data.length):0;document.getElementById('healthScore').textContent=avg?avg+'/100':'—';document.getElementById('healthBar').style.width=Math.max(5,avg)+'%';
-  document.getElementById('statusGrid').innerHTML=`<div class="statusBox"><small>Market API</small><strong class="${online?'up':'down'}">${online?'Online':'Offline'}</strong></div><div class="statusBox"><small>BTC</small><strong>${b?.provider||'—'}</strong></div><div class="statusBox"><small>ETH</small><strong>${e?.provider||'—'}</strong></div><div class="statusBox"><small>Scanner</small><strong>Loading…</strong></div>`;
+  document.getElementById('statusGrid').innerHTML=`<div class="statusBox"><small>Market API</small><strong class="${online?'up':'down'}">${online?'Online':'Offline'}</strong></div><div class="statusBox"><small>BTC</small><strong>${b?.provider||'—'}</strong></div><div class="statusBox"><small>ETH</small><strong>${e?.provider||'—'}</strong></div><div class="statusBox"><small>Scanner</small><strong>${scanner?'Ready':'Retrying…'}</strong></div>`;
   if(b)showDetail(b);
  }catch(err){setLive(false,'OFFLINE');document.getElementById('marketList').innerHTML='<div class="panel">Live market data is temporarily unavailable. Retrying automatically…</div>';document.getElementById('marketPagination').innerHTML=''}
- document.getElementById('statusGrid').querySelector('.statusBox:last-child strong').textContent='Loading…';
- try{const d=await api('/api/scanner?tf=15m');scannerRows=(d.results||[]);renderScanner();document.getElementById('statusGrid').querySelector('.statusBox:last-child strong').textContent='Ready'}catch{document.getElementById('scanner').innerHTML='<tr><td colspan="7">Scanner unavailable</td></tr>';document.getElementById('statusGrid').querySelector('.statusBox:last-child strong').textContent='Retrying…'}
+ try{const d=await api('/api/scanner?tf=15m');scannerRows=(d.results||[]);renderScanner()}catch{document.getElementById('scanner').innerHTML='<tr><td colspan="7">Scanner unavailable</td></tr>'}
 }
 function renderScanner(){document.getElementById('scanner').innerHTML=scannerRows.slice(0,12).map(x=>{const up=(x.bullScore||0)>=(x.bearScore||0);return `<tr onclick="openChart('${x.symbol}')" style="cursor:pointer"><td><b>${names[x.symbol]||x.symbol}</b><div class="pair">${x.symbol}/USDT</div></td><td>${money(x.price)}</td><td class="${Number(x.momentum)>=0?'up':'down'}">${percent(Number(x.momentum)*100)}</td><td>${x.bullScore??'—'}</td><td>${x.bearScore??'—'}</td><td class="risk">${x.riskScore??'—'}</td><td><span class="badge ${up?'goodBadge':'badBadge'}">${x.setup||'NEUTRAL'}</span></td></tr>`}).join('')||'<tr><td colspan="7">No scanner results</td></tr>'}
 function showDetail(x){x=norm(x);document.getElementById('selectedPair').textContent=x.symbol+'/USDT';document.getElementById('detailGrid').innerHTML=[['Price',money(x.price)],['RSI',x.rsi?.toFixed?.(1)||'—'],['Bull',x.bullScore??'—'],['Risk',x.riskScore??'—'],['Setup',x.setup||'—']].map(([a,b])=>`<div class="metric"><small>${a}</small><b>${b}</b></div>`).join('')}
