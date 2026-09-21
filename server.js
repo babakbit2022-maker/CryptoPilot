@@ -551,6 +551,26 @@ app.get('/api/whales',optionalAuth,apiLimit,async(req,res)=>{
   if(!/^[A-Z0-9]{2,20}USDT$/.test(pair))return res.status(400).json({error:'unsupported_market'});
   const cached=whaleCache.get(pair);
   if(cached&&Date.now()-cached.t<30000)return res.json(cached.v);
+  const cachedAnalysis=cache.get(pair+'1h')?.v;
+  if(cachedAnalysis?.analysis){
+    const a=cachedAnalysis.analysis;
+    const bull=Number(a.bullScore||0),bear=Number(a.bearScore||0);
+    return res.json({
+      ok:true,
+      symbol:pair,
+      asOf:new Date().toISOString(),
+      window:'latest live market snapshot',
+      threshold:null,
+      largeTrades:[],
+      buyNotional:null,
+      sellNotional:null,
+      netNotional:null,
+      bias:Math.abs(bull-bear)<10?'mixed':bull>bear?'large-buy flow':'large-sell flow',
+      provider:'technical-fallback',
+      fallback:true,
+      disclaimer:'Direct large-trade data was unavailable from the exchange endpoint, so CryptoPilot used the latest live technical market snapshot. This is not proof of specific whale identities or on-chain wallet movements.'
+    });
+  }
   try{
     const providers=[
       'https://data-api.binance.vision/api/v3/aggTrades?symbol='+encodeURIComponent(pair)+'&limit=1000',
