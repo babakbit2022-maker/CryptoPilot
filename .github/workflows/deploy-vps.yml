@@ -102,7 +102,25 @@ jobs:
             if command -v ufw >/dev/null 2>&1; then
               ufw allow 80/tcp || true
               ufw allow 443/tcp || true
+              ufw allow 3000/tcp || true
             fi
+            if command -v firewall-cmd >/dev/null 2>&1; then
+              firewall-cmd --permanent --add-service=http || true
+              firewall-cmd --permanent --add-service=https || true
+              firewall-cmd --reload || true
+            fi
+            if command -v iptables >/dev/null 2>&1; then
+              iptables -C INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null || iptables -I INPUT -p tcp --dport 80 -j ACCEPT || true
+              iptables -C INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null || iptables -I INPUT -p tcp --dport 443 -j ACCEPT || true
+            fi
+            if command -v nft >/dev/null 2>&1; then
+              nft list ruleset >/tmp/cryptopilot-nft.txt 2>/dev/null || true
+            fi
+            echo "=== PUBLIC LISTENERS ==="
+            ss -ltnp | grep -E ':(80|443|3000)\\b' || true
+            echo "=== FIREWALL ==="
+            (ufw status verbose || true)
+            (iptables -S INPUT 2>/dev/null | head -80 || true)
             sleep 5
             curl --fail --silent --show-error --max-time 20 http://127.0.0.1:3000/api/health
             curl --fail --silent --show-error --max-time 20 http://127.0.0.1/api/health
