@@ -117,6 +117,9 @@ jobs:
         run: |
           set -e
           curl --fail --silent --show-error --max-time 20 http://87.107.190.74/api/health
+          ASSETS="$(curl --fail --silent --show-error --max-time 20 http://87.107.190.74/api/screenshot-assets)"
+          printf '%s' "$ASSETS" | grep -q '"ok":true'
+          printf '%s' "$ASSETS" | grep -q '"coins"'
           ROOT="$(curl --fail --silent --show-error --max-time 20 http://87.107.190.74/)"
           printf '%s' "$ROOT" | grep -q "growthViewport"
           printf '%s' "$ROOT" | grep -q "marketStats"
