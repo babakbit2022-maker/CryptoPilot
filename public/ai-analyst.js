@@ -31,10 +31,10 @@
   async function loadScreenshotCoins(sel){
     sel.innerHTML='<option value="">Loading all supported assets…</option>';
     try{
-      const r=await fetch('/api/coins',{cache:'no-store'});
+      const r=await fetch('/api/screenshot-assets',{cache:'no-store'});
       if(!r.ok)throw Error('HTTP '+r.status);
       const d=await r.json();
-      const coins=Array.isArray(d.coins)?d.coins:(Array.isArray(d.data)?d.data:(Array.isArray(d.results)?d.results:[]));
+      const coins=Array.isArray(d.coins)?d.coins:[];
       const normalized=coins.map(x=>{
         const raw=String(x.symbol||x.ticker||x.baseSymbol||'').toUpperCase().replace(/USDT$/,'');
         return {symbol:raw,name:String(x.name||x.coinName||raw)};
@@ -46,7 +46,7 @@
       const current=(new URLSearchParams(location.search).get('symbol')||'BTC').replace(/USDT$/i,'').toUpperCase();
       if(unique.some(x=>x.symbol===current))sel.value=current;
     }catch(e){
-      sel.innerHTML='<option value="BTC">BTC (temporary fallback)</option>';
+      sel.innerHTML='<option value="">Asset list unavailable — retry</option>'; 
       sel.dataset.loadError=String(e.message||e);
     }
   }
@@ -94,9 +94,9 @@
             const data=await new Promise((resolve,reject)=>{const fr=new FileReader();fr.onload=()=>resolve(fr.result);fr.onerror=reject;fr.readAsDataURL(file)});
             const symbol=(sel.value||'BTC').toUpperCase()+'USDT';
             const rr=await fetch('/api/ai/screenshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol,image:data})});
-            const jj=await rr.json();if(!rr.ok||!jj.ok)throw Error(jj.error||'screenshot');
+            const jj=await rr.json();if(!rr.ok||!jj.ok)throw Error(jj.detail||jj.error||'screenshot');
             renderAnalysis(jj,symbol,data);
-          }catch(e){ans.innerHTML='<div class="cp-ai-answer-loading">تحلیل تصویری انجام نشد. دوباره با تصویر واضح‌تر امتحان کن.</div>'}
+          }catch(e){ans.innerHTML='<div class="cp-ai-answer-loading">تحلیل تصویری انجام نشد. سرویس بینایی هوش مصنوعی پاسخ معتبر نداد؛ تصویر واضح‌تر یا اسکرین‌شات کامل‌تر را دوباره ارسال کن.</div>'}
           finally{btn.disabled=false;}
         };
       }catch{
