@@ -544,7 +544,7 @@ app.get('/api/whales',optionalAuth,apiLimit,async(req,res)=>{
     whaleCache.set(pair,{t:Date.now(),v:view});return res.json(view);
   }catch{res.status(503).json({error:'whale_activity_unavailable'});}
 });
-app.post('/api/ai/screenshot',optionalAuth,aiLimit,async(req,res)=>{
+app.post('/api/ai/screenshot',auth,aiLimit,premium,async(req,res)=>{
   const symbol=String(req.body?.symbol||'BTCUSDT').toUpperCase();
   const image=String(req.body?.image||'');
   if(!/^([A-Z0-9]{2,20})USDT$/.test(symbol))return res.status(400).json({error:'unsupported_market'});
