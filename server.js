@@ -547,17 +547,22 @@ app.get('/api/whales',optionalAuth,apiLimit,async(req,res)=>{
 app.post('/api/ai/screenshot',optionalAuth,aiLimit,async(req,res)=>{
   const symbol=String(req.body?.symbol||'BTCUSDT').toUpperCase();
   const image=String(req.body?.image||'');
+  if(!/^([A-Z0-9]{2,20})USDT$/.test(symbol))return res.status(400).json({error:'unsupported_market'});
   if(!/^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=]+$/.test(image))return res.status(400).json({error:'invalid_image'});
   if(image.length>11000000)return res.status(413).json({error:'image_too_large'});
   try{
     const market=await buildChartAiAnalysis(symbol,'1h').catch(()=>null);
     if(!process.env.OPENAI_API_KEY)throw Error('not_configured');
-    const prompt='You are CryptoPilot AI. Analyze the user-provided crypto trading chart screenshot as an educational technical analyst. Use visible chart information plus the supplied live market context. Identify timeframe if visible, trend, market structure, support/resistance, RSI/EMA/volume if visible, momentum, volatility, possible bullish and bearish scenarios, invalidation conditions, and practical points the user should watch. Do not invent unreadable values. If something is not visible, say so. Answer in clear Persian. Do not guarantee profit and do not give personalized financial advice. Start with a concise verdict, then explain the evidence. LIVE CONTEXT: '+JSON.stringify(market||{symbol});
-    const rr=await fetch('https://1xai.ir/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+process.env.OPENAI_API_KEY},body:JSON.stringify({model:process.env.OPENAI_VISION_MODEL||'gpt-4o',messages:[{role:'user',content:[{type:'text',text:prompt},{type:'image_url',image_url:{url:image}}]}]}),signal:AbortSignal.timeout(30000)});
+    const prompt='You are CryptoPilot AI. Analyze this user-provided crypto chart screenshot as an educational technical analyst. Use ONLY visible chart evidence plus the supplied live market context. Do not invent unreadable values. Return VALID JSON ONLY with this exact shape: {"summary":"...","points":[{"id":1,"x":50,"y":50,"title":"...","explanation":"...","lesson":"...","type":"support|resistance|buying_pressure|selling_pressure|breakout|breakdown|trend|volume|momentum|warning"}],"bullishScenario":"...","bearishScenario":"...","watch":"..."}. Include 2 to 6 numbered points when the image supports them. x and y are percentages from the left/top of the image (0-100) and must place the marker on the relevant chart location. Explain what is visible at each numbered point, why it matters, and the educational lesson. If a point cannot be located reliably, omit it. Do not provide guaranteed outcomes or personalized financial advice. Answer in clear English. LIVE CONTEXT: '+JSON.stringify(market||{symbol});
+    const rr=await fetch('https://1xai.ir/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+process.env.OPENAI_API_KEY},body:JSON.stringify({model:process.env.OPENAI_VISION_MODEL||'gpt-4o',temperature:0.2,messages:[{role:'user',content:[{type:'text',text:prompt},{type:'image_url',image_url:{url:image}}]}]}),signal:AbortSignal.timeout(30000)});
     if(!rr.ok)throw Error('vision');
     const j=await rr.json();
-    const answer=j.choices?.[0]?.message?.content||'تحلیل تصویری دریافت نشد.';
-    res.json({ok:true,source:'1xai',symbol,asOf:new Date().toISOString(),answer});
+    const raw=j.choices?.[0]?.message?.content||'';
+    const cleaned=raw.replace(/^\s*\`\`\`(?:json)?\s*/i,'').replace(/\s*\`\`\`\s*$/,'').trim();
+    let analysis;try{analysis=JSON.parse(cleaned)}catch{analysis={summary:raw,points:[],bullishScenario:'',bearishScenario:'',watch:''}};
+    if(!Array.isArray(analysis.points))analysis.points=[];
+    analysis.points=analysis.points.slice(0,6).map((p,i)=>({id:i+1,x:Math.max(0,Math.min(100,Number(p.x)||50)),y:Math.max(0,Math.min(100,Number(p.y)||50)),title:String(p.title||'Chart point'),explanation:String(p.explanation||''),lesson:String(p.lesson||''),type:String(p.type||'trend')}));
+    res.json({ok:true,source:'1xai',symbol,asOf:new Date().toISOString(),analysis});
   }catch{res.status(503).json({error:'screenshot_ai_unavailable'});}
 });
 
