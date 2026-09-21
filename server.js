@@ -522,7 +522,7 @@ app.post('/api/ai/analyze',auth,aiLimit,premium,async(req,res)=>{if(!process.env
 const whaleCache=new Map();
 app.get('/api/whales',optionalAuth,apiLimit,async(req,res)=>{
   const pair=String(req.query.symbol||'BTCUSDT').toUpperCase();
-  if(!/^[A-Z0-9]{5,20}USDT$/.test(pair))return res.status(400).json({error:'unsupported_market'});
+  if(!/^[A-Z0-9]{2,20}USDT$/.test(pair))return res.status(400).json({error:'unsupported_market'});
   const cached=whaleCache.get(pair);
   if(cached&&Date.now()-cached.t<30000)return res.json(cached.v);
   try{
