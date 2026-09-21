@@ -613,6 +613,11 @@ app.get('/api/whales',optionalAuth,apiLimit,async(req,res)=>{
 });
 app.get('/api/screenshot-assets',optionalAuth,apiLimit,async(req,res)=>{
   try{
+    const universe=cache.get('__universe')?.v;
+    if(Array.isArray(universe)&&universe.length>=100){
+      const out=universe.map(x=>({symbol:String(x.symbol||'').toUpperCase(),name:String(x.name||x.symbol||''),pair:x.pair}));
+      return res.json({ok:true,updatedAt:new Date().toISOString(),coins:out});
+    }
     const key='__screenshot_assets';
     const cached=cache.get(key);
     if(cached&&Date.now()-cached.t<10*60*1000)return res.json({ok:true,updatedAt:new Date(cached.t).toISOString(),coins:cached.v});
