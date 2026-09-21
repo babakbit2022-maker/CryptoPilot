@@ -135,9 +135,6 @@ async function loadDailyIntelligence(){
   const avg=rs.length?Math.round(rs.slice(0,80).reduce((a,x)=>a+Number(x.riskScore||50),0)/Math.min(80,rs.length)):50;
   const breadth=rs.length?Math.round(rs.slice(0,80).filter(x=>Number(x.momentum||0)>0).length/Math.min(80,rs.length)*100):50;
   const liveRisk=Math.round(Math.max(5,Math.min(95,avg*0.65+(100-breadth)*0.35)));
-  document.getElementById('dailyRiskScore').textContent=liveRisk;
-  document.getElementById('dailyRiskLabel').textContent=liveRisk<35?'Low Risk':liveRisk<65?'Balanced':'High Volatility';
-  document.getElementById('dailyRiskCircle').title='Live risk '+liveRisk+'/100 · Market breadth '+breadth+'% positive';
   const gainers=g.gainers||[];
   const movers=gainers.slice(0,8);
   const growthHTML=movers.length?movers.map((x,i)=>'<div class="growthItem" onclick="openChart(&quot;'+x.symbol+'&quot;)"><span class="gRank">#'+(i+1)+'</span><b class="gSymbol">'+x.symbol+'</b><span class="gPrice">'+money(x.price)+'</span><strong class="gChange up">+'+Number(x.change24h).toFixed(2)+'%</strong></div>').join(''):'<div class="growthItem growthEmpty">Live growth data unavailable</div>';
