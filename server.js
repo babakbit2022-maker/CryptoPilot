@@ -544,26 +544,67 @@ app.get('/api/whales',optionalAuth,apiLimit,async(req,res)=>{
     whaleCache.set(pair,{t:Date.now(),v:view});return res.json(view);
   }catch{res.status(503).json({error:'whale_activity_unavailable'});}
 });
+app.get('/api/screenshot-assets',optionalAuth,apiLimit,async(req,res)=>{
+  try{
+    const key='__screenshot_assets';
+    const cached=cache.get(key);
+    if(cached&&Date.now()-cached.t<10*60*1000)return res.json({ok:true,updatedAt:new Date(cached.t).toISOString(),coins:cached.v});
+    const coins=[];
+    for(const page of [1,2]){
+      const u='https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page='+page+'&sparkline=false';
+      const r=await marketFetch(u,{headers:{accept:'application/json'},signal:AbortSignal.timeout(12000)});
+      if(!r.ok)throw Error('coingecko_assets');
+      const data=await r.json();
+      if(!Array.isArray(data))throw Error('coingecko_assets');
+      coins.push(...data);
+    }
+    const out=coins.slice(0,500).map(x=>({symbol:String(x.symbol||'').toUpperCase(),name:String(x.name||x.symbol||'') ,pair:String(x.symbol||'').toUpperCase()+'USDT'})).filter(x=>/^[A-Z0-9]{2,20}$/.test(x.symbol));
+    if(out.length<100)throw Error('insufficient_assets');
+    cache.set(key,{t:Date.now(),v:out});
+    res.json({ok:true,updatedAt:new Date().toISOString(),coins:out});
+  }catch{
+    try{
+      const all=await refreshMarketUniverse();
+      const out=all.map(x=>({symbol:String(x.symbol||'').toUpperCase(),name:String(x.name||x.symbol||''),pair:x.pair}));
+      if(out.length)return res.json({ok:true,updatedAt:new Date().toISOString(),coins:out});
+    }catch{}
+    res.status(503).json({error:'screenshot_assets_unavailable'});
+  }
+});
+
 app.post('/api/ai/screenshot',auth,aiLimit,premium,async(req,res)=>{
   const symbol=String(req.body?.symbol||'BTCUSDT').toUpperCase();
   const image=String(req.body?.image||'');
-  if(!/^([A-Z0-9]{2,20})USDT$/.test(symbol))return res.status(400).json({error:'unsupported_market'});
+  if(!/^[A-Z0-9]{2,20}USDT$/.test(symbol))return res.status(400).json({error:'unsupported_market'});
   if(!/^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=]+$/.test(image))return res.status(400).json({error:'invalid_image'});
   if(image.length>11000000)return res.status(413).json({error:'image_too_large'});
   try{
     const market=await buildChartAiAnalysis(symbol,'1h').catch(()=>null);
     if(!process.env.OPENAI_API_KEY)throw Error('not_configured');
-    const prompt='You are CryptoPilot AI. Analyze this user-provided crypto chart screenshot as an educational technical analyst. Use ONLY visible chart evidence plus the supplied live market context. Do not invent unreadable values. Return VALID JSON ONLY with this exact shape: {"summary":"...","points":[{"id":1,"x":50,"y":50,"title":"...","explanation":"...","lesson":"...","type":"support|resistance|buying_pressure|selling_pressure|breakout|breakdown|trend|volume|momentum|warning"}],"bullishScenario":"...","bearishScenario":"...","watch":"..."}. Include 2 to 6 numbered points when the image supports them. x and y are percentages from the left/top of the image (0-100) and must place the marker on the relevant chart location. Explain what is visible at each numbered point, why it matters, and the educational lesson. If a point cannot be located reliably, omit it. Do not provide guaranteed outcomes or personalized financial advice. Answer in clear English. LIVE CONTEXT: '+JSON.stringify(market||{symbol});
-    const rr=await fetch('https://1xai.ir/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+process.env.OPENAI_API_KEY},body:JSON.stringify({model:process.env.OPENAI_VISION_MODEL||'gpt-4o',temperature:0.2,messages:[{role:'user',content:[{type:'text',text:prompt},{type:'image_url',image_url:{url:image}}]}]}),signal:AbortSignal.timeout(30000)});
-    if(!rr.ok)throw Error('vision');
-    const j=await rr.json();
-    const raw=j.choices?.[0]?.message?.content||'';
+    const prompt='You are CryptoPilot AI, a professional visual crypto-chart analyst. Inspect the ACTUAL uploaded screenshot carefully. Identify only features you can see: price structure, trend, swing highs/lows, support/resistance, breakouts/breakdowns, volume, momentum indicators, moving averages, RSI/MACD if visible, and warning signs. Use the supplied live market context only as secondary context; never replace visual evidence with guesses. Return VALID JSON ONLY: {"summary":"...","points":[{"id":1,"x":50,"y":50,"title":"...","explanation":"...","lesson":"...","type":"..."}],"bullishScenario":"...","bearishScenario":"...","watch":"..."}. Use 3 to 6 points when the screenshot supports them. x/y are percentages from the left/top of the image and MUST point to the actual relevant location in the uploaded image. Do not invent unreadable numbers. Write clear, fluent Persian. Explain each point in practical language for a normal user. Never guarantee profit or give personalized financial advice. LIVE CONTEXT: '+JSON.stringify(market||{symbol});
+    const models=[process.env.OPENAI_VISION_MODEL||'gpt-4o', 'gpt-4o'].filter((x,i,a)=>x&&!a.slice(0,i).includes(x));
+    let raw='';
+    for(const model of models){
+      try{
+        const rr=await fetch('https://1xai.ir/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+process.env.OPENAI_API_KEY},body:JSON.stringify({model,temperature:0.2,messages:[{role:'user',content:[{type:'text',text:prompt},{type:'image_url',image_url:{url:image}}]}]}),signal:AbortSignal.timeout(30000)});
+        if(!rr.ok)continue;
+        const j=await rr.json();
+        const c=j.choices?.[0]?.message?.content;
+        raw=Array.isArray(c)?c.map(x=>typeof x==='string'?x:x?.text||'').join('\n'):String(c||'');
+        if(raw.trim())break;
+      }catch{}
+    }
+    if(!raw.trim())throw Error('vision');
     const cleaned=raw.replace(/^\s*\`\`\`(?:json)?\s*/i,'').replace(/\s*\`\`\`\s*$/,'').trim();
-    let analysis;try{analysis=JSON.parse(cleaned)}catch{analysis={summary:raw,points:[],bullishScenario:'',bearishScenario:'',watch:''}};
+    let analysis;try{analysis=JSON.parse(cleaned)}catch{throw Error('invalid_vision_json');}
+    if(!analysis||typeof analysis!=='object')throw Error('invalid_vision_json');
     if(!Array.isArray(analysis.points))analysis.points=[];
-    analysis.points=analysis.points.slice(0,6).map((p,i)=>({id:i+1,x:Math.max(0,Math.min(100,Number(p.x)||50)),y:Math.max(0,Math.min(100,Number(p.y)||50)),title:String(p.title||'Chart point'),explanation:String(p.explanation||''),lesson:String(p.lesson||''),type:String(p.type||'trend')}));
-    res.json({ok:true,source:'1xai',symbol,asOf:new Date().toISOString(),analysis});
-  }catch{res.status(503).json({error:'screenshot_ai_unavailable'});}
+    analysis.points=analysis.points.slice(0,6).map((p,i)=>({id:i+1,x:Math.max(0,Math.min(100,Number(p.x)||50)),y:Math.max(0,Math.min(100,Number(p.y)||50)),title:String(p.title||'نقطه مهم روی چارت'),explanation:String(p.explanation||''),lesson:String(p.lesson||''),type:String(p.type||'trend')}));
+    if(!String(analysis.summary||'').trim()&&!analysis.points.length)throw Error('empty_vision');
+    res.json({ok:true,source:'1xai',model:models[0],symbol,asOf:new Date().toISOString(),analysis});
+  }catch(e){
+    res.status(503).json({error:'screenshot_ai_unavailable',detail:String(e?.message||'vision_failed')});
+  }
 });
 
 let dailyPickCache={t:0,data:null,running:false};
