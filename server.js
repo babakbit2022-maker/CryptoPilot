@@ -70,10 +70,13 @@ const symbols={BTCUSDT:'BTC',ETHUSDT:'ETH',SOLUSDT:'SOL',BNBUSDT:'BNB',XRPUSDT:'
 const symbolMeta=new Map(Object.entries(symbols).map(([pair,symbol])=>[pair,{symbol,coingeckoId:null}]));
 const tfMap={'1m':1,'15m':15,'1h':60,'4h':240,'1d':1440};
 const cache=new Map();
+let universeRefreshPromise=null;
 async function refreshMarketUniverse(){
   const now=Date.now();
   const cached=cache.get('__universe');
   if(cached&&now-cached.t<3*60*1000)return cached.v;
+  if(universeRefreshPromise)return universeRefreshPromise;
+  universeRefreshPromise=(async()=>{
   try{
     const cgPages=await Promise.all([1,2].map(async page=>{const r=await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page='+page+'&sparkline=false&price_change_percentage=24h',{headers:{accept:'application/json'},signal:AbortSignal.timeout(10000)});if(!r.ok)throw new Error('coingecko universe');return r.json();}));
     const cg={ok:true,json:async()=>cgPages.flat()};
@@ -104,7 +107,11 @@ async function refreshMarketUniverse(){
     const fallback=Object.entries(symbols).map(([pair,symbol])=>({pair,symbol,name:symbol}));
     cache.set('__universe',{t:now,v:fallback});
     return fallback;
+  } finally {
+    universeRefreshPromise=null;
   }
+  })();
+  return universeRefreshPromise;
 }
 
 async function binanceKlines(symbol,interval,limit=250){const configured=(process.env.MARKET_BASE_URL||'').replace(/\/$/,'');const bases=[configured,'https://data-api.binance.vision','https://api-gcp.binance.com','https://api.binance.com','https://api1.binance.com','https://api2.binance.com','https://api3.binance.com','https://api4.binance.com'].filter((v,i,a)=>v&&!a.slice(0,i).includes(v));let last=null;for(const base of bases){try{const u=`${base}/api/v3/klines?symbol=${encodeURIComponent(symbol)}&interval=${interval}&limit=${limit}`;const r=await fetch(u,{headers:{accept:'application/json'},signal:AbortSignal.timeout(8000)});if(r.ok){const data=await r.json();if(Array.isArray(data)&&data.length)return data;}last=new Error('binance');}catch(e){last=e;}}throw last||new Error('binance');}
