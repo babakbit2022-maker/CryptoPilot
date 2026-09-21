@@ -54,25 +54,21 @@
     if($('cpAiScreenshot'))return;
     const host=$('cpAiDeep');if(!host)return;
     const box=document.createElement('div');box.id='cpAiScreenshot';box.className='cp-ai-ask';
-    box.innerHTML='<div class="cp-ai-ask-title">📸 AI Chart Screenshot Analysis · 🔒 PREMIUM</div><div class="cp-ai-ask-sub">Upload and visual interpretation are premium features. The analysis answer and chart markers stay locked until payment.</div><div class="cta"><div><b>Unlock Screenshot AI</b><span>Get visual markers, explanation, scenarios and what-to-watch guidance.</span></div><a class="primary" href="/payment.html">Unlock Premium</a></div>';
+    box.innerHTML='<div class="cp-ai-ask-title">📸 AI Chart Screenshot Lab · 🔒 PREMIUM</div>'+
+      '<div class="cp-ai-ask-sub">اول بازار را انتخاب کن، سپس تصویر چارت خودت را بفرست. پاسخ تحلیل، نقاط علامت‌گذاری‌شده و راهنمای عملی فقط با Premium باز می‌شود.</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1.4fr;gap:9px;margin-top:12px">'+
+      '<label style="display:block;color:#91a4b8;font-size:10px">Asset<select id="cpShotCoin" class="select" style="width:100%;margin-top:5px;background:#081624;color:#fff;border:1px solid #182d43;border-radius:10px"></select></label>'+
+      '<label style="display:block;color:#91a4b8;font-size:10px">Chart screenshot<input id="cpShotFile" type="file" accept="image/png,image/jpeg,image/webp" style="display:block;width:100%;margin-top:5px;color:#9eb0c3"></label>'+
+      '</div>'+
+      '<div style="margin-top:10px;color:#71859a;font-size:10px">تصویر خوانا از کندل‌ها، تایم‌فریم، حجم و اندیکاتورها باعث می‌شود نقاط دقیق‌تر مشخص شوند.</div>'+
+      '<div class="cta"><div><b>Unlock Screenshot AI</b><span>بعد از پرداخت: علامت‌گذاری روی خود تصویر + توضیح ساده هر نقطه + سناریوها + ریسک و مواردی که باید زیر نظر بگیری.</span></div><button id="cpShotBtn" class="primary" type="button">Analyze Screenshot</button></div>'+
+      '<div id="cpShotAnswer"></div>';
     host.parentNode.insertBefore(box,host.nextSibling);
     const sel=$('cpShotCoin');loadScreenshotCoins(sel);
     $('cpShotBtn').addEventListener('click',async()=>{
       const file=$('cpShotFile').files?.[0],ans=$('cpShotAnswer');if(!file)return;
-      if(file.size>8*1024*1024){ans.innerHTML='<div class="cp-ai-answer-loading">Image must be smaller than 8 MB.</div>';return;}
-      const btn=$('cpShotBtn');btn.disabled=true;ans.innerHTML='<div class="cp-ai-answer-loading">Reading the chart and building visual markers…</div>';
-      try{
-        const data=await new Promise((resolve,reject)=>{const fr=new FileReader();fr.onload=()=>resolve(fr.result);fr.onerror=reject;fr.readAsDataURL(file)});
-        const symbol=(sel.value||'BTC').toUpperCase()+'USDT';
-        const r=await fetch('/api/ai/screenshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol,image:data})});
-        const j=await r.json();if(!r.ok||!j.ok)throw Error(j.error||'screenshot');
-        const a=j.analysis||{},points=Array.isArray(a.points)?a.points:[];
-        const src=esc(data);
-        ans.innerHTML='<div class="cp-shot-result"><div class="cp-shot-meta"><b>'+esc(symbol.replace('USDT',''))+' · Visual AI Analysis</b><span>'+esc(j.asOf||'')+'</span></div><div class="cp-shot-stage"><img src="'+src+'" alt="Uploaded '+esc(symbol)+' chart screenshot"><div class="cp-shot-markers">'+points.map(p=>'<button type="button" class="cp-shot-marker" data-point="'+esc(p.id)+'" style="left:'+Number(p.x)+'%;top:'+Number(p.y)+'%" title="'+esc(p.title)+'">'+esc(p.id)+'</button>').join('')+'</div></div><div class="cp-shot-summary"><b>AI Summary</b><p>'+esc(a.summary||'No reliable visual summary was returned.')+'</p></div><div class="cp-shot-points">'+points.map(p=>'<article class="cp-shot-point" data-point-card="'+esc(p.id)+'"><div class="cp-shot-point-head"><span class="cp-shot-num">'+esc(p.id)+'</span><b>'+esc(p.title)+'</b></div><p>'+esc(p.explanation)+'</p><small>Educational lesson: '+esc(p.lesson)+'</small></article>').join('')+'</div><div class="cp-shot-scenarios"><article><b>Bullish scenario</b><p>'+esc(a.bullishScenario||'Not enough visible evidence.')+'</p></article><article><b>Bearish scenario</b><p>'+esc(a.bearishScenario||'Not enough visible evidence.')+'</p></article></div><div class="cp-shot-watch"><b>What to watch</b><p>'+esc(a.watch||'Monitor price structure, volume, and confirmation.')+'</p></div><div class="cp-ai-foot">Educational chart analysis. Visual markers are AI interpretations of the supplied image and live market context; they are not guaranteed trade signals or personalized financial advice.</div></div>';
-        box.querySelectorAll('.cp-shot-marker').forEach(m=>m.onclick=()=>{const card=box.querySelector('[data-point-card="'+m.dataset.point+'"]');card?.scrollIntoView({behavior:'smooth',block:'center'});box.querySelectorAll('.cp-shot-point').forEach(x=>x.classList.remove('active'));card?.classList.add('active')});
-        box.querySelectorAll('.cp-shot-point').forEach(card=>card.onclick=()=>{const m=box.querySelector('.cp-shot-marker[data-point="'+card.dataset.pointCard+'"]');m?.focus();});
-      }catch{ans.innerHTML='<div class="cp-ai-answer-loading">Screenshot analysis is temporarily unavailable. No visual conclusion was generated.</div>'}
-      finally{btn.disabled=false;}
+      ans.innerHTML='<div class="cp-ai-answer-loading">🔒 Premium required to run Screenshot AI.</div>';
+      location.href='/payment.html';
     });
   }
   async function run(force=false){
