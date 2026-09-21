@@ -154,9 +154,7 @@ async function loadDailyIntelligence(){
   document.getElementById('perfMeta').textContent='Historical performance is temporarily unavailable.';
  }
 }
-</script>
-\n</body>
-</html>+Number(stats.totalMarketCap||0).toLocaleString(undefined,{maximumFractionDigits:0})],['Avg 24h',percent(stats.averageChange24h)],['Priced',stats.pricedAssets]].map(([a,b])=>'<div class="statusBox"><small>'+a+'</small><strong>'+b+'</strong></div>').join('')}
++Number(stats.totalMarketCap||0).toLocaleString(undefined,{maximumFractionDigits:0})],['Avg 24h',percent(stats.averageChange24h)],['Priced',stats.pricedAssets]].map(([a,b])=>'<div class="statusBox"><small>'+a+'</small><strong>'+b+'</strong></div>').join('')}
   renderMarkets();
   
   const s=await api('/api/market-status');const online=s.markets?.filter(x=>x.online).length||0;setLive(online>0,online>0?'LIVE':'OFFLINE');
@@ -214,5 +212,5 @@ async function loadDailyIntelligence(){
 }
 async function loadWhaleRadar(){try{const d=await api('/api/whale-intelligence'),s=d.marketSummary||{},flow=Number(s.avgTakerImbalance12h||0)*100,oi=s.avgOiChange12h;document.getElementById('whaleSummary').innerHTML='<div class="whaleStat"><small>12h Aggressive Flow</small><b class="'+(flow>=0?'up':'down')+'">'+(flow>=0?'+':'')+flow.toFixed(1)+'% buy pressure</b></div><div class="whaleStat"><small>Average 12h Open Interest</small><b>'+ (Number.isFinite(Number(oi))?((oi>=0?'+':'')+Number(oi).toFixed(2)+'%'):'—') +'</b></div><div class="whaleStat"><small>Auto-Scanned Futures</small><b>'+Number(s.tracked||0)+' markets</b></div>';const fmtPct=v=>Number.isFinite(Number(v))?((Number(v)>=0?'+':'')+Number(v).toFixed(2)+'%'):'—',fmtRate=v=>Number.isFinite(Number(v))?((Number(v)>=0?'+':'')+(Number(v)*100).toFixed(4)+'%'):'—';const html=(d.leaders||[]).map(x=>{const cls=x.signal==='ACCUMULATION'?'acc':x.signal==='DISTRIBUTION'?'dist':'mix',label=x.signal==='ACCUMULATION'?'فشار خرید':x.signal==='DISTRIBUTION'?'فشار فروش':'ترکیبی';return '<article class="whaleCard" onclick="openChart(\\''+x.symbol+'\\')" style="cursor:pointer"><div class="whaleTop"><span class="whaleSymbol">🐋 '+x.symbol+'</span><span class="whaleSignal '+cls+'">'+label+'</span></div><div class="whaleScore">'+x.whaleScore+'/100</div><div class="whaleMetrics"><div><small>24h Price</small><b class="'+(Number(x.priceChange24h)>=0?'up':'down')+'">'+fmtPct(x.priceChange24h)+'</b></div><div><small>12h OI</small><b>'+fmtPct(x.oiChange12h)+'</b></div><div><small>12h Buy/Sell</small><b>'+fmtPct(Number(x.takerImbalance12h)*100)+'</b></div><div><small>Funding</small><b>'+fmtRate(x.fundingRate)+'</b></div></div><div class="whaleReason">'+x.narrative+'</div></article>'}).join('');document.getElementById('whaleLeaders').innerHTML=html||'<div class="whaleCard">داده مشتقات فعلاً در دسترس نیست؛ سیستم دوباره تلاش می‌کند.</div>';document.getElementById('whaleUpdated').textContent='Updated '+new Date(d.generatedAt).toLocaleTimeString()}catch{document.getElementById('whaleLeaders').innerHTML='<div class="whaleCard">اتصال به داده نهنگ‌ها موقتاً در دسترس نیست؛ تلاش بعدی خودکار انجام می‌شود.</div>';document.getElementById('whaleUpdated').textContent='Retrying…'}}loadWhaleRadar();setInterval(loadWhaleRadar,60000);
 </script>
-\n</body>
+</body>
 </html>
