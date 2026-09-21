@@ -83,7 +83,7 @@
     css();let root=$('cpAiDeep');if(!root){const grid=document.querySelector('.aiGrid');if(!grid)return;grid.insertAdjacentHTML('beforebegin',`<div id="cpAiDeep" class="cp-ai-deep"><div class="cp-ai-body"><div class="cp-ai-loading">Analyzing the asset and chart structure…</div></div></div>`);root=$('cpAiDeep')}else root.innerHTML='<div class="cp-ai-body"><div class="cp-ai-loading">Analyzing the asset and chart structure…</div></div>';
     screenshotPanel();
     try{const q=new URLSearchParams(location.search),symbol=(q.get('symbol')||'BTCUSDT').toUpperCase(),tf=q.get('tf')||'1h';const r=await fetch(`/api/ai/chart-analysis?symbol=${encodeURIComponent(symbol)}&tf=${encodeURIComponent(tf)}&_=${Date.now()}`,{cache:'no-store'});const j=await r.json();if(!r.ok||!j.ok)throw Error(j.error||'ai');root.dataset.loaded='1';render(j);}
-    catch{root.innerHTML='<div class="cp-ai-body"><div class="cp-ai-loading">AI Analysis فعلاً در دسترس نیست؛ داده زنده چارت همچنان فعال است.</div></div>';root.dataset.loaded='0';}
+    catch{root.innerHTML='<div class="cp-ai-body"><div class="cp-ai-loading">AI Analysis is temporarily unavailable; live chart data remains active.</div></div>';root.dataset.loaded='0';}
   }
   function wire(){const coin=$('coin');coin?.addEventListener('change',()=>setTimeout(()=>run(true),120));document.querySelectorAll('[data-tf]').forEach(b=>b.addEventListener('click',()=>setTimeout(()=>run(true),120)));run(true);if(timer)clearInterval(timer);timer=setInterval(()=>run(true),90000);}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire);else wire();
