@@ -28,6 +28,10 @@ CREATE INDEX IF NOT EXISTS idx_ai_predictions_market ON ai_predictions(symbol,tf
 CREATE TABLE IF NOT EXISTS daily_pick_runs(id INTEGER PRIMARY KEY AUTOINCREMENT,run_date TEXT UNIQUE NOT NULL,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS daily_pick_items(id INTEGER PRIMARY KEY AUTOINCREMENT,run_id INTEGER NOT NULL,symbol TEXT NOT NULL,rank INTEGER NOT NULL,entry_price REAL NOT NULL,score REAL,confidence TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(run_id) REFERENCES daily_pick_runs(id) ON DELETE CASCADE);
 CREATE INDEX IF NOT EXISTS idx_daily_pick_items_run ON daily_pick_items(run_id,rank);
+CREATE TABLE IF NOT EXISTS daily_pick_snapshots(id INTEGER PRIMARY KEY AUTOINCREMENT,run_id INTEGER NOT NULL,item_id INTEGER NOT NULL,symbol TEXT NOT NULL,price REAL NOT NULL,recorded_at TEXT DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(run_id) REFERENCES daily_pick_runs(id) ON DELETE CASCADE,FOREIGN KEY(item_id) REFERENCES daily_pick_items(id) ON DELETE CASCADE);
+CREATE INDEX IF NOT EXISTS idx_daily_pick_snapshots_lookup ON daily_pick_snapshots(run_id,symbol,recorded_at);
+CREATE TABLE IF NOT EXISTS daily_pick_results(id INTEGER PRIMARY KEY AUTOINCREMENT,run_id INTEGER NOT NULL,item_id INTEGER NOT NULL,symbol TEXT NOT NULL,target_at TEXT NOT NULL,entry_price REAL NOT NULL,exit_price REAL NOT NULL,change_pct REAL NOT NULL,source TEXT NOT NULL DEFAULT '24h_snapshot',evaluated_at TEXT DEFAULT CURRENT_TIMESTAMP,UNIQUE(run_id,item_id),FOREIGN KEY(run_id) REFERENCES daily_pick_runs(id) ON DELETE CASCADE,FOREIGN KEY(item_id) REFERENCES daily_pick_items(id) ON DELETE CASCADE);
+CREATE INDEX IF NOT EXISTS idx_daily_pick_results_run ON daily_pick_results(run_id);
 `);
 app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : false);
 app.use(helmet({ contentSecurityPolicy: false }));
@@ -710,7 +714,7 @@ async function getCurrentPrice(symbol){
   }catch{return null;}
 }
 async function recordDailyPickRun(picks){
-  const runDate=utcDateKey();
+  const runDate=utcDateKey(new Date());
   let run=db.prepare('SELECT id FROM daily_pick_runs WHERE run_date=?').get(runDate);
   if(!run){
     const tx=db.transaction(items=>{
@@ -724,22 +728,63 @@ async function recordDailyPickRun(picks){
   }
   return run.id;
 }
+
+function recordDailyPickSnapshots(runId,picks){
+  if(!runId||!Array.isArray(picks)||!picks.length)return;
+  const items=db.prepare('SELECT id,symbol FROM daily_pick_items WHERE run_id=?').all(runId);
+  const by=new Map(items.map(x=>[x.symbol,x.id]));
+  const insert=db.prepare('INSERT INTO daily_pick_snapshots(run_id,item_id,symbol,price,recorded_at) VALUES(?,?,?,?,CURRENT_TIMESTAMP)');
+  const tx=db.transaction(rows=>{
+    for(const x of rows){
+      const itemId=by.get(x.symbol),price=Number(x.price);
+      if(itemId&&Number.isFinite(price)&&price>0)insert.run(runId,itemId,x.symbol,price);
+    }
+  });
+  tx(picks);
+}
+
+async function evaluateDailyPickRun(run){
+  if(!run?.id)return;
+  const targetMs=Date.parse(String(run.created_at||''));
+  if(!Number.isFinite(targetMs)||Date.now()<targetMs+24*60*60*1000)return;
+  const items=db.prepare('SELECT id,symbol,entry_price FROM daily_pick_items WHERE run_id=? ORDER BY rank').all(run.id);
+  const insert=db.prepare('INSERT OR IGNORE INTO daily_pick_results(run_id,item_id,symbol,target_at,entry_price,exit_price,change_pct,source) VALUES(?,?,?,?,?,?,?,?)');
+  for(const item of items){
+    const exists=db.prepare('SELECT id FROM daily_pick_results WHERE run_id=? AND item_id=?').get(run.id,item.id);
+    if(exists)continue;
+    const targetAt=new Date(targetMs+24*60*60*1000).toISOString();
+    const snap=db.prepare("SELECT price,recorded_at FROM daily_pick_snapshots WHERE run_id=? AND item_id=? ORDER BY ABS(strftime('%s',recorded_at)-strftime('%s',?)) ASC LIMIT 1").get(run.id,item.id,targetAt);
+    let exitPrice=Number(snap?.price),source='24h_snapshot';
+    if(!Number.isFinite(exitPrice)||exitPrice<=0){
+      exitPrice=await getCurrentPrice(item.symbol);
+      source='post_24h_live_fallback';
+    }
+    if(!Number.isFinite(exitPrice)||exitPrice<=0||!Number(item.entry_price))continue;
+    const change=((exitPrice-Number(item.entry_price))/Number(item.entry_price))*100;
+    insert.run(run.id,item.id,item.symbol,targetAt,Number(item.entry_price),exitPrice,change,source);
+  }
+}
+
 async function getDailyPerformance(daysAgo=1){
-  const target=new Date(Date.now()-daysAgo*86400000);
+  const safeDays=Math.max(1,Math.min(30,Number(daysAgo)||1));
+  const target=new Date(Date.now()-safeDays*86400000);
   const date=utcDateKey(target);
   const run=db.prepare('SELECT id,run_date,created_at FROM daily_pick_runs WHERE run_date=?').get(date);
   if(!run)return {available:false,date,reason:'history_not_collected'};
+  await evaluateDailyPickRun(run);
   const items=db.prepare('SELECT symbol,rank,entry_price,score,confidence FROM daily_pick_items WHERE run_id=? ORDER BY rank').all(run.id);
-  const results=[];
-  for(const x of items){
-    const price=await getCurrentPrice(x.symbol);
-    const change=Number.isFinite(price)&&Number(x.entry_price)>0 ? ((price-Number(x.entry_price))/Number(x.entry_price))*100 : null;
-    results.push({...x,current_price:price,change24hSincePick:change});
+  const results=db.prepare('SELECT symbol,rank,entry_price,exit_price,change_pct,source,evaluated_at,target_at FROM daily_pick_results r JOIN daily_pick_items i ON i.id=r.item_id WHERE r.run_id=? ORDER BY rank').all(run.id);
+  if(results.length<items.length){
+    const age=Date.now()-Date.parse(String(run.created_at||''));
+    return {available:false,date,reason:age<24*60*60*1000?'history_not_ready':'history_incomplete',trackedCount:results.length,totalCount:items.length,targetAt:new Date(Date.parse(String(run.created_at||''))+24*60*60*1000).toISOString()};
   }
-  const valid=results.filter(x=>Number.isFinite(x.change24hSincePick));
-  const avg=valid.length?valid.reduce((a,x)=>a+x.change24hSincePick,0)/valid.length:null;
-  const positive=valid.filter(x=>x.change24hSincePick>0).length;
-  return {available:true,date,picks:results,averageReturn:avg,positiveCount:positive,totalCount:valid.length,method:'Equal-weight price change from recorded daily pick entry; excludes fees/slippage.'};
+  const valid=results.filter(x=>Number.isFinite(Number(x.change_pct)));
+  const avg=valid.length?valid.reduce((a,x)=>a+Number(x.change_pct),0)/valid.length:null;
+  const positive=valid.filter(x=>Number(x.change_pct)>0).length;
+  const negative=valid.filter(x=>Number(x.change_pct)<0).length;
+  const best=valid.length?Math.max(...valid.map(x=>Number(x.change_pct))):null;
+  const worst=valid.length?Math.min(...valid.map(x=>Number(x.change_pct))):null;
+  return {available:true,date,runCreatedAt:run.created_at,targetAt:new Date(Date.parse(String(run.created_at))+24*60*60*1000).toISOString(),picks:valid,averageReturn:avg,positiveCount:positive,negativeCount:negative,totalCount:valid.length,bestChange:best,worstChange:worst,method:'Equal-weight 24-hour price change from the recorded pick entry. The exit price uses the closest recorded market snapshot to the 24-hour target; if no snapshot exists, a clearly marked live fallback is used. Fees, slippage and execution costs are excluded.'};
 }
 
 async function computeDailyPicks(){
@@ -766,7 +811,8 @@ async function computeDailyPicks(){
       }));
     }));
     const picks=[...by.values()].filter(x=>x.tfCount>=2).sort((a,b)=>b.score-a.score).slice(0,5).map((x,i)=>({...x,rank:i+1,score:Math.round(Math.min(99,x.score/x.tfCount)),confidence:x.tfCount>=3?'multi-timeframe':'multi-signal'}));
-    await recordDailyPickRun(picks);
+    const runId=await recordDailyPickRun(picks);
+    recordDailyPickSnapshots(runId,picks);
     const performance=await getDailyPerformance(1);
     dailyPickCache={t:Date.now(),data:{ok:true,updatedAt:new Date().toISOString(),picks,performance,disclaimer:'Research-only signals. No pump or profit is guaranteed.'},running:false};
     return dailyPickCache.data;
@@ -786,7 +832,7 @@ app.get('/api/daily-picks',optionalAuth,async(req,res)=>{
     ok:true,updatedAt:d.updatedAt,
     premium:isPremium,
     picks:isPremium?d.picks:d.picks.map(x=>({rank:x.rank,confidence:x.confidence,score:x.score,locked:true})),
-    performance:d.performance,
+    performance:isPremium?d.performance:{available:false,reason:'premium_required'},
     disclaimer:d.disclaimer
   });
 });
