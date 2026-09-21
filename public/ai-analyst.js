@@ -30,15 +30,40 @@
     root.innerHTML=`<div class="cp-ai-deep-head"><div><div class="cp-ai-kicker">CryptoPilot AI · Live chart intelligence</div><div class="cp-ai-deep-title">تحلیل هوشمند ${esc(v.symbol||'')}</div><div class="cp-ai-deep-sub">${esc(a.tf||new URLSearchParams(location.search).get('tf')||'1h')} · تحلیل چندتایم‌فریمی · به‌روزرسانی زنده</div></div><span class="cp-ai-engine ${v.source==='1xai'?'':'fallback'}">${v.source==='1xai'?'AI ENGINE · LIVE':'TECHNICAL ENGINE'}</span></div><div class="cp-ai-body"><div class="cp-ai-profile"><div class="cp-ai-box"><small>حوزه / کاربرد</small><b>${esc(v.sector||'نیازمند بررسی')}</b><span style="display:block;color:#8fa2b6;font-size:10px;margin-top:4px">${esc(v.useCase||'')}</span></div><div class="cp-ai-box"><small>وضعیت تکنیکال</small><b>${esc(a.setup||'NEUTRAL').replaceAll('_',' ')}</b><span style="display:block;color:#8fa2b6;font-size:10px;margin-top:4px">RSI ${a.rsi==null?'—':Number(a.rsi).toFixed(1)} · Risk ${a.riskScore==null?'—':a.riskScore+'/100'} · Support ${money(a.support)} · Resistance ${money(a.resistance)}</span></div></div><div class="cp-ai-report">${normal.map(x=>`<div class="cp-ai-section"><h4>${esc(x.h)}</h4><p>${esc(x.p)}</p></div>`).join('')}</div>${scenarios.length?`<div class="cp-ai-scenarios" style="margin-top:8px">${scenarios.map(x=>`<div class="cp-ai-section"><h4>${esc(x.h)}</h4><p>${esc(x.p)}</p></div>`).join('')}</div>`:''}</div><div class="cp-ai-foot">تحلیل بر اساس داده بازار و ساختار چارت است؛ سناریوها شرطی هستند و تضمین رشد یا سقوط و توصیه مالی شخصی نیستند.</div>`;
   }
 
+  async function loadScreenshotCoins(sel){
+    try{
+      const r=await fetch('/api/coins',{cache:'no-store'}),d=await r.json();
+      const coins=d.coins||[];
+      sel.innerHTML=coins.map(x=>'<option value="'+esc(x.symbol)+'">'+esc(x.name||x.symbol)+' ('+esc(x.symbol)+')</option>').join('');
+      const current=new URLSearchParams(location.search).get('symbol')||'BTC';
+      sel.value=current.replace(/USDT$/i,'').toUpperCase();
+    }catch{sel.innerHTML='<option value="BTC">BTC</option>';}
+  }
   function screenshotPanel(){
     if($('cpAiScreenshot'))return;
     const host=$('cpAiDeep');if(!host)return;
     const box=document.createElement('div');box.id='cpAiScreenshot';box.className='cp-ai-ask';
-    box.innerHTML='<div class="cp-ai-ask-title">📸 تحلیل فوری اسکرین‌شات چارت</div><div class="cp-ai-ask-sub">اسکرین‌شات چارت همین ارز را بفرست تا CryptoPilot AI ساختار، روند، حمایت/مقاومت و سناریوهای احتمالی را بررسی کند.</div><input id="cpShotFile" type="file" accept="image/png,image/jpeg,image/webp" style="width:100%;margin:10px 0;color:#9eb0c3"><button id="cpShotBtn" class="primary" type="button">تحلیل اسکرین‌شات</button><div id="cpShotAnswer"></div>';
+    box.innerHTML='<div class="cp-ai-ask-title">📸 AI Chart Screenshot Analysis</div><div class="cp-ai-ask-sub">Select any supported asset, upload its chart screenshot, and CryptoPilot AI will mark important areas directly on the image with numbered points.</div><div style="display:grid;grid-template-columns:minmax(180px,260px) 1fr;gap:9px;margin:10px 0"><select id="cpShotCoin" class="select"><option>Loading assets…</option></select><input id="cpShotFile" type="file" accept="image/png,image/jpeg,image/webp" style="width:100%;color:#9eb0c3"></div><button id="cpShotBtn" class="primary" type="button">Analyze Screenshot</button><div id="cpShotAnswer"></div>';
     host.parentNode.insertBefore(box,host.nextSibling);
-    $('cpShotBtn').addEventListener('click',async()=>{const file=$('cpShotFile').files?.[0],ans=$('cpShotAnswer');if(!file)return; if(file.size>8*1024*1024){ans.innerHTML='<div class="cp-ai-answer-loading">حجم تصویر باید کمتر از ۸ مگابایت باشد.</div>';return;} const btn=$('cpShotBtn');btn.disabled=true;ans.innerHTML='<div class="cp-ai-answer-loading">در حال بررسی اسکرین‌شات و داده زنده…</div>';try{const data=await new Promise((resolve,reject)=>{const fr=new FileReader();fr.onload=()=>resolve(fr.result);fr.onerror=reject;fr.readAsDataURL(file)});const p=new URLSearchParams(location.search),symbol=(p.get('symbol')||'BTCUSDT').toUpperCase();const r=await fetch('/api/ai/screenshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol,image:data})});const j=await r.json();if(!r.ok||!j.ok)throw Error(j.error||'screenshot');ans.innerHTML='<div class="cp-ai-answer"><div class="cp-ai-answer-head"><b>تحلیل اسکرین‌شات CryptoPilot AI</b><span>'+esc(j.asOf||'')+'</span></div><div class="cp-ai-answer-text">'+esc(j.answer||'')+'</div></div>';}catch{ans.innerHTML='<div class="cp-ai-answer-loading">تحلیل اسکرین‌شات فعلاً در دسترس نیست.</div>';}finally{btn.disabled=false;}});
+    const sel=$('cpShotCoin');loadScreenshotCoins(sel);
+    $('cpShotBtn').addEventListener('click',async()=>{
+      const file=$('cpShotFile').files?.[0],ans=$('cpShotAnswer');if(!file)return;
+      if(file.size>8*1024*1024){ans.innerHTML='<div class="cp-ai-answer-loading">Image must be smaller than 8 MB.</div>';return;}
+      const btn=$('cpShotBtn');btn.disabled=true;ans.innerHTML='<div class="cp-ai-answer-loading">Reading the chart and building visual markers…</div>';
+      try{
+        const data=await new Promise((resolve,reject)=>{const fr=new FileReader();fr.onload=()=>resolve(fr.result);fr.onerror=reject;fr.readAsDataURL(file)});
+        const symbol=(sel.value||'BTC').toUpperCase()+'USDT';
+        const r=await fetch('/api/ai/screenshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol,image:data})});
+        const j=await r.json();if(!r.ok||!j.ok)throw Error(j.error||'screenshot');
+        const a=j.analysis||{},points=Array.isArray(a.points)?a.points:[];
+        const src=esc(data);
+        ans.innerHTML='<div class="cp-shot-result"><div class="cp-shot-meta"><b>'+esc(symbol.replace('USDT',''))+' · Visual AI Analysis</b><span>'+esc(j.asOf||'')+'</span></div><div class="cp-shot-stage"><img src="'+src+'" alt="Uploaded '+esc(symbol)+' chart screenshot"><div class="cp-shot-markers">'+points.map(p=>'<button type="button" class="cp-shot-marker" data-point="'+esc(p.id)+'" style="left:'+Number(p.x)+'%;top:'+Number(p.y)+'%" title="'+esc(p.title)+'">'+esc(p.id)+'</button>').join('')+'</div></div><div class="cp-shot-summary"><b>AI Summary</b><p>'+esc(a.summary||'No reliable visual summary was returned.')+'</p></div><div class="cp-shot-points">'+points.map(p=>'<article class="cp-shot-point" data-point-card="'+esc(p.id)+'"><div class="cp-shot-point-head"><span class="cp-shot-num">'+esc(p.id)+'</span><b>'+esc(p.title)+'</b></div><p>'+esc(p.explanation)+'</p><small>Educational lesson: '+esc(p.lesson)+'</small></article>').join('')+'</div><div class="cp-shot-scenarios"><article><b>Bullish scenario</b><p>'+esc(a.bullishScenario||'Not enough visible evidence.')+'</p></article><article><b>Bearish scenario</b><p>'+esc(a.bearishScenario||'Not enough visible evidence.')+'</p></article></div><div class="cp-shot-watch"><b>What to watch</b><p>'+esc(a.watch||'Monitor price structure, volume, and confirmation.')+'</p></div><div class="cp-ai-foot">Educational chart analysis. Visual markers are AI interpretations of the supplied image and live market context; they are not guaranteed trade signals or personalized financial advice.</div></div>';
+        box.querySelectorAll('.cp-shot-marker').forEach(m=>m.onclick=()=>{const card=box.querySelector('[data-point-card="'+m.dataset.point+'"]');card?.scrollIntoView({behavior:'smooth',block:'center'});box.querySelectorAll('.cp-shot-point').forEach(x=>x.classList.remove('active'));card?.classList.add('active')});
+        box.querySelectorAll('.cp-shot-point').forEach(card=>card.onclick=()=>{const m=box.querySelector('.cp-shot-marker[data-point="'+card.dataset.pointCard+'"]');m?.focus();});
+      }catch{ans.innerHTML='<div class="cp-ai-answer-loading">Screenshot analysis is temporarily unavailable. No visual conclusion was generated.</div>'}
+      finally{btn.disabled=false;}
+    });
   }
-
   async function run(force=false){
     const k=key();if(!force&&k===lastKey&&$('cpAiDeep')?.dataset.loaded==='1')return;lastKey=k;
     css();let root=$('cpAiDeep');if(!root){const grid=document.querySelector('.aiGrid');if(!grid)return;grid.insertAdjacentHTML('beforebegin',`<div id="cpAiDeep" class="cp-ai-deep"><div class="cp-ai-body"><div class="cp-ai-loading">در حال تحلیل تخصصی ارز و ساختار چارت…</div></div></div>`);root=$('cpAiDeep')}else root.innerHTML='<div class="cp-ai-body"><div class="cp-ai-loading">در حال تحلیل تخصصی ارز و ساختار چارت…</div></div>';
