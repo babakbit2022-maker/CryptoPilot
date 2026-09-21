@@ -496,7 +496,32 @@ app.post('/api/ai/ask',optionalAuth,aiLimit,async(req,res)=>{
   if(!symbols[pair])await refreshMarketUniverse();
   if(!symbols[pair])return res.status(400).json({error:'unsupported_market'});
   try{
-    const v=await buildChartAiAnalysis(pair,'1h');
+    let v;
+    try{
+      v=await Promise.race([
+        buildChartAiAnalysis(pair,'1h'),
+        new Promise((_,reject)=>setTimeout(()=>reject(new Error('ai_chart_timeout')),12000))
+      ]);
+    }catch{
+      const cached=cache.get(pair+'1h')?.v;
+      const live=cached||await Promise.race([
+        getAnalysis(pair,'1h'),
+        new Promise((_,reject)=>setTimeout(()=>reject(new Error('ai_fallback_timeout')),6000))
+      ]);
+      const meta=symbolMeta.get(pair)||{};
+      const profile=assetProfile(symbols[pair],meta.name||symbols[pair]);
+      v={
+        symbol:symbols[pair],
+        name:meta.name||symbols[pair],
+        sector:profile.sector,
+        useCase:profile.use,
+        drivers:profile.drivers,
+        analysis:live.analysis,
+        timeframes:[{tf:'1h',analysis:live.analysis}],
+        updatedAt:new Date().toISOString(),
+        source:'technical-fallback'
+      };
+    }
     try{if(process.env.OPENAI_API_KEY){
       const context={symbol:v.symbol,sector:v.sector,useCase:v.useCase,analysis:v.analysis,timeframes:v.timeframes};
       const prompt='You are CryptoPilot AI. Answer the user Persian crypto question using ONLY the supplied live market data and asset metadata. Start from the exact current timestamp. Write naturally and clearly, like an expert answering a normal user. If the question asks whether to buy, do not give a guaranteed yes/no; explain conditions and risks. Always cover short-term, medium-term and long-term views when relevant. Explain RSI, EMA, momentum, volume, support/resistance and timeframe agreement in simple language. Be specific, concise but complete. Never promise profit.\nUser question: '+question+'\nDATA: '+JSON.stringify(context);
