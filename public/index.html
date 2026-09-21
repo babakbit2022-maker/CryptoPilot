@@ -149,15 +149,27 @@ async function loadDailyIntelligence(){
   }).join(''):'<div class="pick">No multi-timeframe candidates available right now.</div>';
   const perf=p.performance||{};
   const perfValue=document.getElementById('perfValue'),perfMeta=document.getElementById('perfMeta');
-  if(perf.available && Number.isFinite(Number(perf.averageReturn))){
+  let perfList=document.getElementById('yesterdayPickStats');
+  if(!perfList){
+    perfList=document.createElement('div'); perfList.id='yesterdayPickStats';
+    perfList.style.cssText='display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:12px';
+    document.getElementById('dailyPerformance').appendChild(perfList);
+  }
+  if(perf.available && Array.isArray(perf.picks) && perf.picks.length){
     const v=Number(perf.averageReturn);
-    perfValue.textContent=(v>=0?'+':'')+v.toFixed(2)+'%';
+    perfValue.textContent=Number.isFinite(v)?(v>=0?'+':'')+v.toFixed(2)+'%':'—';
     perfValue.className='perfValue '+(v>=0?'up':'down');
     perfMeta.textContent='Yesterday · '+perf.positiveCount+' of '+perf.totalCount+' tracked picks positive';
+    perfList.innerHTML=perf.picks.map(x=>{
+      const ch=Number(x.change24hSincePick);
+      const cls=Number.isFinite(ch)?(ch>=0?'up':'down'):'';
+      const value=Number.isFinite(ch)?(ch>=0?'+':'')+ch.toFixed(2)+'%':'—';
+      return '<div class="statusBox"><small>#'+x.rank+' · '+x.symbol+'</small><strong class="'+cls+'">'+value+'</strong><div class="muted" style="font-size:9px;margin-top:3px">Entry '+money(x.entry_price)+' → Now '+money(x.current_price)+'</div><div class="muted" style="font-size:9px;margin-top:4px">Yesterday pick result</div></div>';
+    }).join('');
   }else{
-    perfValue.textContent='—';
-    perfValue.className='perfValue';
+    perfValue.textContent='—'; perfValue.className='perfValue';
     perfMeta.textContent='No completed daily history yet — tracking starts with the first recorded daily picks.';
+    perfList.innerHTML='<div class="statusBox" style="grid-column:1/-1"><small>Yesterday\'s result</small><strong>History is not available yet</strong><div class="muted" style="font-size:9px;margin-top:4px">Once a daily pick run is recorded, each of the 5 coins will show its exact percentage change and entry/current price.</div></div>';
   }
   document.getElementById('picksUpdated').textContent='Updated '+new Date(p.updatedAt).toLocaleTimeString();
  }catch{
