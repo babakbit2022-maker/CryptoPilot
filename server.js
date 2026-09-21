@@ -248,6 +248,100 @@ async function computeDailyPicks(){
   }
 }
 
+
+const whaleCache={t:0,data:null,running:false};
+const futuresBases=['https://fapi.binance.com','https://fapi1.binance.com','https://fapi2.binance.com','https://fapi3.binance.com','https://fapi4.binance.com'];
+async function futuresJson(path){
+  let last=null;
+  for(const base of futuresBases){
+    try{
+      const r=await fetch(base+path,{headers:{accept:'application/json'},signal:AbortSignal.timeout(6500)});
+      if(r.ok)return await r.json();
+      last=new Error('futures '+r.status);
+    }catch(e){last=e}
+  }
+  throw last||new Error('futures unavailable');
+}
+function whalePct(v){return Number.isFinite(Number(v))?Number(v)*100:null}
+function whaleMoney(v){const n=Number(v);if(!Number.isFinite(n))return null;return n}
+function whaleNarrative(x){
+  const p=Number(x.priceChange24h||0), oi=Number(x.oiChange12h||0), taker=Number(x.takerImbalance12h||0), fund=Number(x.fundingRate||0);
+  if(taker>.12&&oi>2&&p>0.5)return 'خرید تهاجمی در معاملات اهرمی هم‌زمان با افزایش موقعیت‌ها دیده می‌شود؛ فعلاً فشار خرید قوی‌تر است.';
+  if(taker<-.12&&oi>2&&p<-.5)return 'فروش تهاجمی هم‌زمان با افزایش موقعیت‌ها دیده می‌شود؛ فشار فروش در حال تقویت است.';
+  if(p>1&&oi<-2)return 'قیمت بالا رفته اما موقعیت‌های باز کم شده‌اند؛ بخشی از حرکت می‌تواند از بسته‌شدن موقعیت‌ها آمده باشد.';
+  if(p< -1&&oi<-2)return 'قیمت پایین آمده و موقعیت‌های باز هم کاهش یافته‌اند؛ نشانه‌ای از خروج اهرمی دیده می‌شود.';
+  if(Math.abs(fund)>.0008)return fund>0?'سمت لانگ‌ها شلوغ‌تر شده و هزینه نگهداری لانگ‌ها بالا رفته است.':'سمت شورت‌ها شلوغ‌تر شده و هزینه نگهداری شورت‌ها بالا رفته است.';
+  if(taker>.08)return 'تراز خرید بازارسازان/خریداران تهاجمی مثبت است، اما تأیید چندگانه هنوز کامل نیست.';
+  if(taker<-.08)return 'تراز فروش تهاجمی منفی است، اما برای نتیجه‌گیری قوی به تأیید قیمت و Open Interest نیاز است.';
+  return 'سیگنال‌های جریان بزرگ‌معامله‌ای ترکیبی هستند؛ فعلاً برتری واضحی بین خرید و فروش دیده نمی‌شود.';
+}
+async function computeWhaleIntelligence(){
+  if(whaleCache.running)return whaleCache.data;
+  if(whaleCache.data&&Date.now()-whaleCache.t<5*60*1000)return whaleCache.data;
+  whaleCache.running=true;
+  try{
+    const universe=await refreshMarketUniverse();
+    const allowed=new Set(universe.map(x=>x.pair));
+    const tickers=await futuresJson('/fapi/v1/ticker/24hr');
+    const candidates=(Array.isArray(tickers)?tickers:[]).filter(x=>allowed.has(String(x.symbol||''))&&Number(x.quoteVolume)>0).sort((a,b)=>Number(b.quoteVolume)-Number(a.quoteVolume)).slice(0,12);
+    const rows=await Promise.all(candidates.map(async t=>{
+      const symbol=String(t.symbol);
+      try{
+        const [fund,oi,oiHist,taker,topAcc,topPos]=await Promise.all([
+          futuresJson('/fapi/v1/fundingRate?symbol='+symbol+'&limit=1').catch(()=>[]),
+          futuresJson('/fapi/v1/openInterest?symbol='+symbol).catch(()=>null),
+          futuresJson('/futures/data/openInterestHist?symbol='+symbol+'&period=1h&limit=13').catch(()=>[]),
+          futuresJson('/futures/data/takerlongshortRatio?symbol='+symbol+'&period=1h&limit=12').catch(()=>[]),
+          futuresJson('/futures/data/topLongShortAccountRatio?symbol='+symbol+'&period=1h&limit=1').catch(()=>[]),
+          futuresJson('/futures/data/topLongShortPositionRatio?symbol='+symbol+'&period=1h&limit=1').catch(()=>[])
+        ]);
+        const hist=Array.isArray(oiHist)?oiHist.filter(x=>Number.isFinite(Number(x.sumOpenInterestValue))):[];
+        const oldOI=hist.length?Number(hist[0].sumOpenInterestValue):null;
+        const newOI=hist.length?Number(hist[hist.length-1].sumOpenInterestValue):Number(oi?.openInterestValue||oi?.openInterest||0)*Number(t.lastPrice||0);
+        const oiChange12h=oldOI&&newOI?((newOI-oldOI)/oldOI)*100:null;
+        const tr=Array.isArray(taker)?taker:[]; 
+        const buy=tr.reduce((a,x)=>a+Number(x.buyVol||x.buyVolValue||0),0);
+        const sell=tr.reduce((a,x)=>a+Number(xsellVol||x.sellVolValue||0),0);
+        const takerImbalance12h=(buy+sell)?(buy-sell)/(buy+sell):0;
+        const f=Array.isArray(fund)&&fund[0]?Number(fund[0].fundingRate):null;
+        const a=Array.isArray(topAcc)&&topAcc[0]?topAcc[0]:null;
+        const pos=Array.isArray(topPos)&&topPos[0]?topPos[0]:null;
+        const longShort=Number(a?.longShortRatio);
+        const positionRatio=Number(pos?.longShortRatio);
+        let score=50+takerImbalance12h*130;
+        if(Number.isFinite(oiChange12h))score+=Math.max(-15,Math.min(15,oiChange12h*1.5));
+        score+=Math.max(-10,Math.min(10,Number(t.priceChangePercent||0)*1.2));
+        if(Number.isFinite(f))score-=Math.max(-8,Math.min(8,f*10000));
+        score=Math.round(Math.max(0,Math.min(100,score)));
+        const signal=score>=68?'ACCUMULATION':score<=32?'DISTRIBUTION':'MIXED';
+        return {
+          symbol:symbol.replace('USDT',''),pair:symbol,price:Number(t.lastPrice),priceChange24h:Number(t.priceChangePercent),
+          volume24h:Number(t.quoteVolume),fundingRate:f,openInterestValue:newOI,oiChange12h,
+          takerBuy12h:buy,takerSell12h:sell,takerImbalance12h,longShortRatio:Number.isFinite(longShort)?longShort:null,
+          topPositionRatio:Number.isFinite(positionRatio)?positionRatio:null,whaleScore:score,signal,
+          narrative:''
+        };
+      }catch{return null}
+    }));
+    const leaders=rows.filter(Boolean).map(x=>({...x,narrative:whaleNarrative(x)})).sort((a,b)=>b.whaleScore-a.whaleScore);
+    const buyPressure=leaders.length?leaders.reduce((a,x)=>a+Number(x.takerImbalance12h||0),0)/leaders.length:0;
+    const avgOi=leaders.filter(x=>Number.isFinite(x.oiChange12h)).length?leaders.reduce((a,x)=>a+(Number.isFinite(x.oiChange12h)?x.oiChange12h:0),0)/leaders.filter(x=>Number.isFinite(x.oiChange12h)).length:null;
+    const data={ok:true,generatedAt:new Date().toISOString(),window:'12h flow + 24h market context',source:'Binance Futures public market data',leaders:leaders.slice(0,6),marketSummary:{avgTakerImbalance12h:buyPressure,avgOiChange12h:avgOi,tracked:leaders.length},disclaimer:'این بخش از داده‌های عمومی مشتقات بایننس برای شناسایی فشار خرید/فروش و تغییر موقعیت‌ها استفاده می‌کند؛ «نهنگ» به معنی شناسایی هویت یک معامله‌گر خاص نیست و هیچ حرکت قیمتی تضمین‌شده نیست.'};
+    whaleCache={t:Date.now(),data,running:false};
+    return data;
+  }catch{
+    whaleCache.running=false;
+    return whaleCache.data;
+  }
+}
+app.get('/api/whale-intelligence',async(req,res)=>{
+  const d=await computeWhaleIntelligence();
+  if(!d)return res.status(503).json({error:'whale_intelligence_unavailable'});
+  res.json(d);
+});
+setTimeout(()=>computeWhaleIntelligence().catch(()=>{}),9000);
+setInterval(()=>computeWhaleIntelligence().catch(()=>{}),5*60*1000);
+
 app.get('/api/daily-picks',optionalAuth,async(req,res)=>{
   const fresh=dailyPickCache.data&&Date.now()-dailyPickCache.t<5*60*1000;
   if(!fresh)await computeDailyPicks();
