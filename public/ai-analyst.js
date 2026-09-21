@@ -32,13 +32,26 @@
   }
 
   async function loadScreenshotCoins(sel){
+    sel.innerHTML='<option value="">Loading all supported assets…</option>';
     try{
-      const r=await fetch('/api/coins',{cache:'no-store'}),d=await r.json();
-      const coins=d.coins||[];
-      sel.innerHTML=coins.map(x=>'<option value="'+esc(x.symbol)+'">'+esc(x.name||x.symbol)+' ('+esc(x.symbol)+')</option>').join('');
-      const current=new URLSearchParams(location.search).get('symbol')||'BTC';
-      sel.value=current.replace(/USDT$/i,'').toUpperCase();
-    }catch{sel.innerHTML='<option value="BTC">BTC</option>';}
+      const r=await fetch('/api/coins',{cache:'no-store'});
+      if(!r.ok)throw Error('HTTP '+r.status);
+      const d=await r.json();
+      const coins=Array.isArray(d.coins)?d.coins:(Array.isArray(d.data)?d.data:(Array.isArray(d.results)?d.results:[]));
+      const normalized=coins.map(x=>{
+        const raw=String(x.symbol||x.ticker||x.baseSymbol||'').toUpperCase().replace(/USDT$/,'');
+        return {symbol:raw,name:String(x.name||x.coinName||raw)};
+      }).filter(x=>/^[A-Z0-9]{2,20}$/.test(x.symbol));
+      const unique=Array.from(new Map(normalized.map(x=>[x.symbol,x])).values());
+      if(!unique.length)throw Error('No assets returned');
+      unique.sort((a,b)=>a.name.localeCompare(b.name));
+      sel.innerHTML=unique.map(x=>'<option value="'+esc(x.symbol)+'">'+esc(x.name)+' ('+esc(x.symbol)+')</option>').join('');
+      const current=(new URLSearchParams(location.search).get('symbol')||'BTC').replace(/USDT$/i,'').toUpperCase();
+      if(unique.some(x=>x.symbol===current))sel.value=current;
+    }catch(e){
+      sel.innerHTML='<option value="BTC">BTC (temporary fallback)</option>';
+      sel.dataset.loadError=String(e.message||e);
+    }
   }
   function screenshotPanel(){
     if($('cpAiScreenshot'))return;
