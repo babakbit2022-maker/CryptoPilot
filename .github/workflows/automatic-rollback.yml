@@ -1,0 +1,69 @@
+name: CryptoPilot Automatic Rollback
+
+on:
+  workflow_run:
+    workflows: ["Deploy CryptoPilot to the production site IP"]
+    types: [completed]
+  workflow_dispatch:
+
+concurrency:
+  group: cryptopilot-automatic-rollback
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  rollback:
+    if: ${{ github.event_name == "workflow_dispatch" || github.event.workflow_run.conclusion == "failure" }}
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    steps:
+      - name: Roll back only when the deployment failed
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: 87.107.190.74
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || "22" }}
+          command_timeout: 10m
+          script: |
+            set -euo pipefail
+            cd /opt/cryptopilot
+            test -f .rollback-sha
+            PREV_SHA="$(cat .rollback-sha)"
+            test -n "$PREV_SHA"
+            git fetch --prune origin "$PREV_SHA"
+            git reset --hard "$PREV_SHA"
+            npm install --omit=dev --no-audit --no-fund
+            pm2 startOrRestart ecosystem.config.cjs --env production --update-env
+            pm2 save
+            sleep 8
+            curl --fail --silent --show-error --max-time 20 http://127.0.0.1:3000/api/health
+            curl --fail --silent --show-error --max-time 20 http://127.0.0.1/api/health
+            echo "AUTOMATIC_ROLLBACK_OK:$PREV_SHA"
+
+      - name: Verify rolled-back production
+        env:
+          BASE_URL: http://87.107.190.74
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 20 "$BASE_URL/api/health" | grep -Fq '"ok"'
+          curl --fail --silent --show-error --max-time 20 "$BASE_URL/api/ready" | grep -Fq '"ready"'
+          curl --fail --silent --show-error --max-time 20 "$BASE_URL/api/coins" | grep -Fq '"count"'
+          echo "ROLLBACK_PRODUCTION_HEALTH_OK"
+
+      - name: Open rollback incident if rollback failed
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title="🚨 CryptoPilot automatic rollback failed";
+            const marker="<!-- cryptopilot-rollback-failed -->";
+            const body=[marker,"A failed deployment triggered automatic rollback, but rollback verification did not complete.","No payment configuration is modified by this workflow.","","Run: "+context.runId,"Time: "+new Date().toISOString()].join("\n");
+            const {data:issues}=await github.rest.issues.listForRepo({owner:context.repo.owner,repo:context.repo.repo,state:"open",per_page:50});
+            const existing=issues.find(i=>i.title===title&&i.body?.includes(marker));
+            if(!existing) await github.rest.issues.create({owner:context.repo.owner,repo:context.repo.repo,title,body});
+            else await github.rest.issues.createComment({owner:context.repo.owner,repo:context.repo.repo,issue_number:existing.number,body:"Rollback failed again. Run "+context.runId});
