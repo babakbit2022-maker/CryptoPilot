@@ -67,7 +67,7 @@ async function getJSON(url){
 }
 async function loadUniverse(){
  const j=await getJSON('/api/coins');
- return (j.coins||[]).filter(x=>x.pair).slice(0,30);
+ return (j.coins||[]).filter(x=>x.pair).slice(0,20);
 }
 async function loadPair(x){
  try{
@@ -122,8 +122,8 @@ async function scan(){
  try{
   universe=await loadUniverse();
   const results=[];
-  for(let i=0;i<universe.length;i+=6){
-    const batch=await Promise.all(universe.slice(i,i+6).map(loadPair));
+  for(let i=0;i<universe.length;i+=10){
+    const batch=await Promise.all(universe.slice(i,i+10).map(loadPair));
     results.push(...batch.filter(Boolean));
   }
   const seen=new Set();allEvents=[];
@@ -138,7 +138,7 @@ async function scan(){
   lastScan=Date.now();
   renderWindow(3600000);renderEvents();
   document.getElementById('asOf').textContent='Last checked: '+new Date().toLocaleString()+' · Market scan: '+universe.length+' assets · Data available from the exchange-trade feed';
-  document.getElementById('scanStatus').textContent='LIVE SCAN';
+  document.getElementById('scanStatus').textContent=allEvents.length?'LIVE WHALE SCAN':'LIVE SCAN — NO LARGE TRADES';
  }catch(e){
   document.getElementById('scanStatus').textContent='DATA UNAVAILABLE';
   document.getElementById('aiReading').textContent='Live whale data is temporarily unavailable. No result is being guessed or filled with fake data.';
@@ -146,7 +146,7 @@ async function scan(){
 }
 document.querySelectorAll('.window').forEach((el,i)=>el.addEventListener('click',()=>{document.querySelectorAll('.window').forEach(x=>x.classList.remove('active'));el.classList.add('active');renderWindow([3600000,21600000,43200000,86400000][i]);}));
 scan();
-setInterval(scan,60000);
+setInterval(scan,30000);
 </script>
 </body>
 </html>
