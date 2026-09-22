@@ -354,7 +354,7 @@ function assetProfile(symbol,name=''){
   if(/usd|stable/i.test(n+' '+s))return {sector:'Stablecoin / digital dollar',use:'A token designed to track a fiat currency value rather than maximize price appreciation.',drivers:'reserve quality, liquidity, redemption confidence and regulatory conditions.'};
   return {sector:'Crypto asset / sector requires confirmation',use:'The available market feed does not provide enough verified project metadata to classify this asset confidently.',drivers:'price liquidity, market regime, project adoption and sector-specific catalysts.'};
 }
-async function buildChartAiAnalysis(pair,tf){
+async function buildChartAiAnalysis(pair,tf,language='en'){
   const key=pair+'|'+tf,now=Date.now(),cached=chartAiCache.get(key);
   if(cached&&now-cached.t<90000)return cached.v;
   const symbol=String(symbols[pair]||pair.replace(/USDT$/,'')); 
@@ -411,19 +411,18 @@ async function buildChartAiAnalysis(pair,tf){
   const primary=reports.find(x=>x.tf===tf)?.analysis||reports.find(x=>x.tf==='1h')?.analysis||reports[0].analysis;
   const payload={symbol,name:meta.name||symbol,sector:profile.sector,useCase:profile.use,drivers:profile.drivers,requestedTf:tf,primary, timeframes:reports.map(x=>({tf:x.tf,analysis:x.analysis}))};
   try{if(process.env.OPENAI_API_KEY){
-    const prompt=`You are CryptoPilot AI, a professional crypto market-analysis assistant. Analyze ONLY the supplied live market data and the supplied asset metadata. The user wants useful, specific and readable analysis, not generic education.
-Return a concise but expert report in Persian with exactly these headings:
-1) جایگاه ارز و کاربرد واقعی
-2) وضعیت فعلی روی چارت
-3) چه چیزی به نفع رشد است
-4) چه چیزی خطر سقوط را بالا می‌برد
-5) سناریوی صعودی
-6) سناریوی نزولی
-7) سطوح مهم و شرط تأیید
-8) جمع‌بندی هوشمند
-Under "سناریوی صعودی" and "سناریوی نزولی", use conditional language and concrete levels from the supplied data. Explain why the scenario would strengthen or fail. Compare 15m/1h/4h/1d and explicitly call out timeframe disagreement. Mention RSI, EMA structure, momentum, volume, ATR/volatility, support/resistance and risk score when available. Never promise profit, never claim certainty, and never give personalized financial advice. If project-sector metadata is uncertain, say so instead of inventing facts.
-DATA:
-${JSON.stringify(payload)}`;
+    const prompt=language==='en' ? `You are CryptoPilot AI, a professional crypto market-analysis assistant. Analyze ONLY the supplied live market data and supplied asset metadata. The user wants useful, specific and readable analysis, not generic education.
+Return a concise but expert report in English with exactly these headings:
+1) Asset role and real-world use
+2) Current chart status
+3) What supports upside
+4) What raises downside risk
+5) Bullish scenario
+6) Bearish scenario
+7) Key levels and confirmation conditions
+8) Smart summary
+Under the bullish and bearish scenarios, use conditional language and concrete levels from the supplied data. Compare 15m/1h/4h/1d and explicitly call out timeframe disagreement. Mention RSI, EMA structure, momentum, volume, ATR/volatility, support/resistance and risk score when available. Never promise profit, never claim certainty, and never give personalized financial advice. If metadata is uncertain, say so instead of inventing facts.
+DATA:\n${JSON.stringify(payload)}` : `You are CryptoPilot AI, a professional crypto market-analysis assistant. Analyze ONLY the supplied live market data and supplied asset metadata. Return a concise expert report in Persian with exactly these headings: جایگاه ارز و کاربرد واقعی، وضعیت فعلی روی چارت، چه چیزی به نفع رشد است، چه چیزی خطر سقوط را بالا می‌برد، سناریوی صعودی، سناریوی نزولی، سطوح مهم و شرط تأیید، جمع‌بندی هوشمند. Use conditional language, compare 15m/1h/4h/1d, mention available RSI/EMA/momentum/volume/ATR/support/resistance/risk, and never promise profit or personalized financial advice. DATA:\n${JSON.stringify(payload)}`;
     const r=await fetch('https://1xai.ir/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.OPENAI_API_KEY}`},body:JSON.stringify({model:process.env.OPENAI_MODEL||'gpt-5.6-luna',messages:[{role:'user',content:prompt}]}),signal:AbortSignal.timeout(20000)});
     if(r.ok){const j=await r.json();const v={source:'1xai',model:process.env.OPENAI_MODEL||'gpt-5.6-luna',symbol,name:meta.name||symbol,sector:profile.sector,useCase:profile.use,drivers:profile.drivers,updatedAt:new Date().toISOString(),analysis:primary,report:j.choices?.[0]?.message?.content||''};chartAiCache.set(key,{t:now,v});return v;}
   }}catch{}
@@ -496,6 +495,7 @@ function buildAiQuestionAnswer(question, v){
 app.post('/api/ai/ask',optionalAuth,aiLimit,async(req,res)=>{
   const pair=String(req.body?.symbol||'BTCUSDT').toUpperCase();
   const question=String(req.body?.question||'').trim().slice(0,1000);
+  const language=String(req.body?.language||'en').toLowerCase()==='fa'?'fa':'en';
   if(!question)return res.status(400).json({error:'question_required'});
   if(!symbols[pair])await refreshMarketUniverse();
   if(!symbols[pair])return res.status(400).json({error:'unsupported_market'});
@@ -503,7 +503,7 @@ app.post('/api/ai/ask',optionalAuth,aiLimit,async(req,res)=>{
     let v;
     try{
       v=await Promise.race([
-        buildChartAiAnalysis(pair,'1h'),
+        buildChartAiAnalysis(pair,'1h',language),
         new Promise((_,reject)=>setTimeout(()=>reject(new Error('ai_chart_timeout')),12000))
       ]);
     }catch{
@@ -528,7 +528,7 @@ app.post('/api/ai/ask',optionalAuth,aiLimit,async(req,res)=>{
     }
     try{if(process.env.OPENAI_API_KEY){
       const context={symbol:v.symbol,sector:v.sector,useCase:v.useCase,analysis:v.analysis,timeframes:v.timeframes};
-      const prompt='You are CryptoPilot AI. Answer the user Persian crypto question using ONLY the supplied live market data and asset metadata. Start from the exact current timestamp. Write naturally and clearly, like an expert answering a normal user. If the question asks whether to buy, do not give a guaranteed yes/no; explain conditions and risks. Always cover short-term, medium-term and long-term views when relevant. Explain RSI, EMA, momentum, volume, support/resistance and timeframe agreement in simple language. Be specific, concise but complete. Never promise profit.\nUser question: '+question+'\nDATA: '+JSON.stringify(context);
+      const prompt=language==='en'?'You are CryptoPilot AI. Answer the user crypto question in clear, natural English using ONLY the supplied live market data and asset metadata. Start from the exact current timestamp. If the question asks whether to buy, do not give a guaranteed yes/no; explain conditions and risks. Cover short-term, medium-term and long-term views when relevant. Explain RSI, EMA, momentum, volume, support/resistance and timeframe agreement simply. Be specific, concise but complete. Never promise profit.\nUser question: '+question+'\nDATA: '+JSON.stringify(context):'You are CryptoPilot AI. Answer the user crypto question in clear Persian using ONLY the supplied live market data and asset metadata. Start from the exact current timestamp. Explain conditions and risks, short/medium/long term when relevant, RSI, EMA, momentum, volume, support/resistance and timeframe agreement. Never promise profit.\nUser question: '+question+'\nDATA: '+JSON.stringify(context);
       const rr=await fetch('https://1xai.ir/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+process.env.OPENAI_API_KEY},body:JSON.stringify({model:process.env.OPENAI_MODEL||'gpt-5.6-luna',messages:[{role:'user',content:prompt}]}),signal:AbortSignal.timeout(20000)});
       if(rr.ok){const j=await rr.json();return res.json({ok:true,source:'1xai',symbol:v.symbol,asOf:new Date().toISOString(),answer:(String(j.choices?.[0]?.message?.content||'').trim().length>=200?String(j.choices[0].message.content).trim():buildAiQuestionAnswer(question,v))});}
       }
