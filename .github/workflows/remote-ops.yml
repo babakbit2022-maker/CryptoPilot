@@ -1,0 +1,105 @@
+name: CryptoPilot VPS Remote Operations
+
+on:
+  push:
+    branches: [ops-bridge]
+    paths: [".github/ops-command.json"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cryptopilot-vps-ops
+  cancel-in-progress: false
+
+jobs:
+  remote-ops:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Validate operation request
+        id: op
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          allowed={"health","status","smoke","restart","backup","diagnostics"}
+          with open(".github/ops-command.json", encoding="utf-8") as f:
+              x=json.load(f)
+          op=x.get("operation")
+          if op not in allowed:
+              raise SystemExit("Unsupported operation")
+          print("operation="+op)
+          PY
+
+      - name: Execute approved VPS operation
+        uses: appleboy/ssh-action@v1.2.2
+        env:
+          OPERATION: ${{ steps.op.outputs.operation }}
+        with:
+          host: 87.107.190.74
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || '22' }}
+          command_timeout: 10m
+          envs: OPERATION
+          script: |
+            set -euo pipefail
+            case "${OPERATION}" in
+              health)
+                curl --fail --silent --show-error --max-time 20 http://127.0.0.1:3000/api/health
+                echo
+                curl --fail --silent --show-error --max-time 20 http://127.0.0.1/api/health
+                echo
+                ;;
+              status)
+                echo "=== PM2 ==="
+                pm2 status
+                echo "=== HEALTH ==="
+                curl --fail --silent --show-error --max-time 20 http://127.0.0.1/api/health
+                echo
+                echo "=== READY ==="
+                curl --fail --silent --show-error --max-time 20 http://127.0.0.1/api/ready
+                echo
+                echo "=== DISK ==="
+                df -h /
+                echo "=== MEMORY ==="
+                free -h
+                ;;
+              smoke)
+                curl --fail --silent --show-error --max-time 20 http://127.0.0.1/api/health
+                curl --fail --silent --show-error --max-time 20 http://127.0.0.1/api/ready
+                curl --fail --silent --show-error --max-time 20 http://127.0.0.1/api/coins >/dev/null
+                curl --fail --silent --show-error --max-time 20 http://127.0.0.1/api/daily-picks >/dev/null
+                curl --fail --silent --show-error --max-time 20 http://127.0.0.1/api/top-gainers >/dev/null
+                curl --fail --silent --show-error --max-time 20 http://127.0.0.1/ >/tmp/cryptopilot-home.html
+                grep -q "growthViewport" /tmp/cryptopilot-home.html
+                grep -q '<html lang="en">' /tmp/cryptopilot-home.html
+                echo "VPS smoke: PASS"
+                ;;
+              restart)
+                pm2 restart cryptopilot
+                sleep 5
+                curl --fail --silent --show-error --max-time 20 http://127.0.0.1:3000/api/health
+                echo
+                ;;
+              backup)
+                test -x /opt/cryptopilot/scripts/guardian-backup.sh
+                /opt/cryptopilot/scripts/guardian-backup.sh
+                echo "Backup: PASS"
+                ;;
+              diagnostics)
+                test -x /opt/cryptopilot/scripts/guardian-diagnostics.sh
+                /opt/cryptopilot/scripts/guardian-diagnostics.sh
+                ;;
+              *)
+                echo "Unsupported operation" >&2
+                exit 2
+                ;;
+            esac
