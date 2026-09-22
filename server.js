@@ -605,88 +605,75 @@ app.get('/api/ai/chart-analysis',optionalAuth,aiLimit,async(req,res)=>{
 
 app.post('/api/ai/analyze',auth,aiLimit,premium,async(req,res)=>{if(!process.env.OPENAI_API_KEY)return res.status(503).json({error:'ai_not_configured'});const symbol=String(req.body?.symbol||''),context=String(req.body?.context||'').slice(0,12000);try{const r=await fetch('https://1xai.ir/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.OPENAI_API_KEY}`},body:JSON.stringify({model:process.env.OPENAI_MODEL||'gpt-5.6-luna',messages:[{role:'user',content:`You are CryptoPilot AI's educational crypto market analyst. Analyze only the supplied market data. Explain trend, momentum, volatility, volume, support/resistance and risks. Never guarantee returns. Do not present certainty or personalized financial advice. Symbol: ${symbol}. Data: ${context}`}]}),signal:AbortSignal.timeout(20000)});if(!r.ok)throw new Error('ai');const j=await r.json();res.json({answer:j.output_text||'No analysis returned.'});}catch{res.status(503).json({error:'ai_unavailable'});}});
 
-// Large-trade activity: this is exchange trade-flow data, not identified on-chain whale wallets.
+// Large-trade activity: exchange trade-flow data, refreshed independently from technical candles.
 const whaleCache=new Map();
 app.get('/api/whales',optionalAuth,apiLimit,async(req,res)=>{
   const pair=String(req.query.symbol||'BTCUSDT').toUpperCase();
   if(!/^[A-Z0-9]{2,20}USDT$/.test(pair))return res.status(400).json({error:'unsupported_market'});
   const cached=whaleCache.get(pair);
-  if(cached&&Date.now()-cached.t<30000)return res.json(cached.v);
-  const cachedAnalysis=cache.get(pair+'1h')?.v;
-  if(cachedAnalysis?.analysis){
-    const a=cachedAnalysis.analysis;
-    const bull=Number(a.bullScore||0),bear=Number(a.bearScore||0);
-    return res.json({
-      ok:true,
-      symbol:pair,
-      asOf:new Date().toISOString(),
-      window:'latest live market snapshot',
-      threshold:null,
-      largeTrades:[],
-      buyNotional:null,
-      sellNotional:null,
-      netNotional:null,
-      bias:Math.abs(bull-bear)<10?'mixed':bull>bear?'large-buy flow':'large-sell flow',
-      provider:'technical-fallback',
-      fallback:true,
-      disclaimer:'Direct large-trade data was unavailable from the exchange endpoint, so CryptoPilot used the latest live technical market snapshot. This is not proof of specific whale identities or on-chain wallet movements.'
-    });
-  }
+  if(cached&&Date.now()-cached.t<15000)return res.json(cached.v);
+
+  // Always try the live exchange trade feed FIRST. Never let an existing candle
+  // snapshot hide real whale/trade-flow data.
   try{
-    const providers=[
+    const urls=[
       'https://data-api.binance.vision/api/v3/aggTrades?symbol='+encodeURIComponent(pair)+'&limit=1000',
-      'https://api.binance.com/api/v3/aggTrades?symbol='+encodeURIComponent(pair)+'&limit=1000',
-      'https://api1.binance.com/api/v3/aggTrades?symbol='+encodeURIComponent(pair)+'&limit=1000',
-      'https://api2.binance.com/api/v3/aggTrades?symbol='+encodeURIComponent(pair)+'&limit=1000'
+      'https://api.binance.com/api/v3/aggTrades?symbol='+encodeURIComponent(pair)+'&limit=1000'
     ];
     let rows=null;
-    for(const u of providers){
+    for(const u of urls){
       try{
-        const r=await marketFetch(u,{headers:{accept:'application/json'},signal:AbortSignal.timeout(10000)});
+        const r=await marketFetch(u,{headers:{accept:'application/json'},signal:AbortSignal.timeout(5000)});
         if(r.ok){
           const data=await r.json();
           if(Array.isArray(data)&&data.length){rows=data;break;}
         }
       }catch{}
     }
-    if(!Array.isArray(rows)||!rows.length)throw Error('binance');
+    if(!Array.isArray(rows)||!rows.length)throw Error('binance_trade_feed');
+
     const trades=rows.map(x=>{
       const price=Number(x.p),qty=Number(x.q),notional=price*qty;
       return {time:new Date(Number(x.T)).toISOString(),price,quantity:qty,notional,side:x.m?'SELL':'BUY'};
     }).filter(x=>Number.isFinite(x.notional)&&x.notional>0);
     const sorted=[...trades].sort((a,b)=>b.notional-a.notional);
+    // Dynamic threshold: top 5% of the returned trades, with a sensible floor.
     const threshold=Math.max(100000,sorted[Math.min(49,sorted.length-1)]?.notional||100000);
-    const large=sorted.filter(x=>x.notional>=threshold).slice(0,12).sort((a,b)=>a.time.localeCompare(b.time));
+    const large=sorted.filter(x=>x.notional>=threshold).slice(0,20).sort((a,b)=>a.time.localeCompare(b.time));
     const buy=large.filter(x=>x.side==='BUY').reduce((n,x)=>n+x.notional,0);
     const sell=large.filter(x=>x.side==='SELL').reduce((n,x)=>n+x.notional,0);
-    const net=buy-sell;
-    const view={ok:true,symbol:pair,asOf:new Date().toISOString(),window:'latest 1000 exchange aggregate trades',threshold,largeTrades:large,buyNotional:buy,sellNotional:sell,netNotional:net,bias:Math.abs(net)<Math.max(buy+sell,1)*.1?'mixed':net>0?'large-buy flow':'large-sell flow',disclaimer:'These are large exchange trade flows, not proof of specific whale identities or on-chain wallet movements.'};
-    whaleCache.set(pair,{t:Date.now(),v:view});return res.json(view);
+    const net=buy-sell,total=buy+sell;
+    const view={
+      ok:true,symbol:pair,asOf:new Date().toISOString(),
+      window:'latest 1000 exchange aggregate trades',threshold,
+      largeTrades:large,buyNotional:buy,sellNotional:sell,netNotional:net,
+      bias:total&&Math.abs(net)/total<.1?'mixed':net>0?'large-buy flow':'large-sell flow',
+      provider:'Binance aggregate trade feed',fallback:false,
+      disclaimer:'These are large exchange trade flows, not proof of specific whale identities or on-chain wallet movements.'
+    };
+    whaleCache.set(pair,{t:Date.now(),v:view});
+    return res.json(view);
   }catch{
+    // Technical snapshot is a clearly labelled fallback only when direct trade
+    // data cannot be reached; it must never be presented as whale activity.
     try{
       const cachedAnalysis=cache.get(pair+'1h')?.v;
       const j=cachedAnalysis||await Promise.race([
         getAnalysis(pair,'1h'),
-        new Promise((_,reject)=>setTimeout(()=>reject(new Error('fallback_timeout')),6000))
+        new Promise((_,reject)=>setTimeout(()=>reject(new Error('fallback_timeout')),5000))
       ]);
       const a=j?.analysis||{};
       const bull=Number(a.bullScore||0),bear=Number(a.bearScore||0);
       const fallbackBias=Math.abs(bull-bear)<10?'mixed':bull>bear?'large-buy flow':'large-sell flow';
-      return res.json({
-        ok:true,
-        symbol:pair,
-        asOf:new Date().toISOString(),
-        window:'latest live market snapshot',
-        threshold:null,
-        largeTrades:[],
-        buyNotional:null,
-        sellNotional:null,
-        netNotional:null,
-        bias:fallbackBias,
-        provider:'technical-fallback',
-        fallback:true,
-        disclaimer:'Direct large-trade data was unavailable from the exchange endpoint, so CryptoPilot used the latest live technical market snapshot. This is not proof of specific whale identities or on-chain wallet movements.'
-      });
+      const view={
+        ok:true,symbol:pair,asOf:new Date().toISOString(),
+        window:'latest live market snapshot',threshold:null,largeTrades:[],
+        buyNotional:null,sellNotional:null,netNotional:null,bias:fallbackBias,
+        provider:'technical-fallback',fallback:true,
+        disclaimer:'Direct large-trade data was unavailable. This technical snapshot is not whale activity and is not proof of wallet movements.'
+      };
+      whaleCache.set(pair,{t:Date.now(),v:view});
+      return res.json(view);
     }catch{
       return res.status(503).json({error:'whale_activity_unavailable'});
     }
