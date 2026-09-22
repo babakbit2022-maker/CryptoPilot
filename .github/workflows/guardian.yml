@@ -49,7 +49,8 @@ jobs:
           check "scanner" "$BASE/api/scanner" '"ok"'
           check "homepage" "$BASE/" 'growthViewport'
           check "screenshot-assets" "$BASE/api/screenshot-assets" '"ok":true'
-          check "i18n-script" "$BASE/i18n.js" 'CryptoPilotSetLanguage'
+          homepage_body="$(curl --silent --show-error --max-time 20 "$BASE/" 2>&1)" || { echo "FAIL homepage-language-check: curl"; fail=1; homepage_body=""; }
+          if printf '%s' "$homepage_body" | grep -Eqi 'language-selector|Language selector|/i18n\.js'; then echo "FAIL homepage-language-check: language selector/i18n loader still present"; fail=1; else echo "PASS homepage-language-check (English-only)"; fi
           if [ "$fail" -ne 0 ]; then
             echo "GUARDIAN_STATUS=FAIL" >> "$GITHUB_OUTPUT"
             exit 1
