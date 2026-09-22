@@ -1,1 +1,80 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="0;url=/crypto-chart.html?symbol=BTCUSDT&tf=1h"><link rel="canonical" href="http://87.107.190.74/crypto-chart.html?symbol=BTCUSDT&tf=1h"><title>AI Chart Analysis | CryptoPilot AI</title></head><body><p>Opening CryptoPilot AI Chart Analysis… <a href="/crypto-chart.html?symbol=BTCUSDT&tf=1h">Continue</a></p></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI Chart Analysis | CryptoPilot AI</title>
+<meta name="description" content="Enter a crypto asset and get a live, multi-timeframe CryptoPilot AI market analysis.">
+<style>
+:root{--bg:#07111d;--panel:#0b1a2a;--panel2:#0e2135;--line:#203b55;--text:#edf5ff;--muted:#9eb2c7;--accent:#55b8ff;--good:#35d39a;--warn:#ffcc66;--bad:#ff6f7d}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#06101b,#091827);color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,Arial,sans-serif}a{color:inherit;text-decoration:none}.wrap{max-width:1180px;margin:auto;padding:26px 18px 50px}.nav{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:28px}.nav a{border:1px solid #263d55;background:rgba(10,25,41,.82);padding:9px 14px;border-radius:11px;font-weight:700}.nav a:hover{border-color:#3f6385}.hero{margin:10px 0 22px}.eyebrow{font-size:12px;letter-spacing:.14em;color:var(--accent);font-weight:800}.hero h1{font-size:clamp(30px,5vw,52px);margin:8px 0}.hero p{color:var(--muted);max-width:760px;font-size:16px}.search{display:grid;grid-template-columns:minmax(0,1fr) 120px 140px auto;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:14px;margin:22px 0}.search input,.search select{width:100%;min-height:48px;border-radius:11px;border:1px solid var(--line);background:#071522;color:var(--text);padding:0 14px;font-size:16px;outline:none}.search input:focus,.search select:focus{border-color:var(--accent)}button{min-height:48px;border:0;border-radius:11px;background:var(--accent);color:#062034;font-weight:900;padding:0 18px;font-size:15px;cursor:pointer}button:disabled{opacity:.6;cursor:wait}.status{min-height:22px;color:var(--muted);font-size:13px;margin:8px 2px}.grid{display:grid;grid-template-columns:1.3fr .7fr;gap:16px}.card{background:rgba(11,26,42,.94);border:1px solid var(--line);border-radius:18px;padding:18px}.card h2{margin:0 0 12px;font-size:18px}.identity{display:flex;justify-content:space-between;gap:15px;align-items:flex-start}.symbol{font-size:27px;font-weight:900}.meta{color:var(--muted);font-size:13px;margin-top:4px}.pill{padding:7px 10px;border:1px solid var(--line);border-radius:999px;color:var(--muted);font-size:12px;white-space:nowrap}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-top:16px}.metric{background:var(--panel2);border-radius:12px;padding:12px}.metric span{display:block;color:var(--muted);font-size:11px}.metric strong{display:block;margin-top:5px;font-size:16px}.report{white-space:pre-wrap;line-height:1.72;color:#dbe8f5}.levels{display:grid;grid-template-columns:1fr 1fr;gap:10px}.level{background:var(--panel2);padding:13px;border-radius:12px}.level span{display:block;color:var(--muted);font-size:12px}.level strong{display:block;margin-top:5px}.tfs{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.tf{background:var(--panel2);border-radius:12px;padding:12px}.tf b{font-size:14px}.tf small{display:block;color:var(--muted);margin-top:7px;line-height:1.55}.disclaimer{margin-top:16px;color:var(--muted);font-size:12px;line-height:1.6}@media(max-width:800px){.search{grid-template-columns:1fr 1fr}.search button{grid-column:1/-1}.grid{grid-template-columns:1fr}.metrics,.tfs{grid-template-columns:1fr 1fr}}@media(max-width:460px){.wrap{padding:18px 12px 35px}.search{grid-template-columns:1fr}.search button{grid-column:auto}.metrics,.tfs{grid-template-columns:1fr}.identity{flex-direction:column}}
+</style>
+</head>
+<body>
+<main class="wrap">
+<nav class="nav" aria-label="Main navigation">
+<a href="/">Overview</a><a href="/market-intelligence.html">Market Intelligence</a><a href="/markets.html">Markets</a><a href="/ai-analysis.html">AI Trading Tools</a><a href="/account.html">Account</a>
+</nav>
+<section class="hero">
+<div class="eyebrow">LIVE AI MARKET ANALYSIS</div>
+<h1>AI Chart Analysis</h1>
+<p>Enter any supported crypto symbol and CryptoPilot AI will combine live market data with 15m, 1h, 4h and 1d technical conditions to produce a clear overall analysis.</p>
+</section>
+<form class="search" id="form">
+<input id="symbol" value="BTC" placeholder="Enter coin symbol, e.g. BTC, ETH, SOL" autocomplete="off" aria-label="Coin symbol">
+<select id="tf" aria-label="Primary timeframe"><option value="15m">15m</option><option value="1h" selected>1h</option><option value="4h">4h</option><option value="1d">1d</option></select>
+<select id="lang" aria-label="Analysis language"><option value="en" selected>English</option><option value="fa">فارسی</option><option value="ru">Русский</option></select>
+<button id="go" type="submit">Analyze</button>
+</form>
+<div class="status" id="status" aria-live="polite">Ready. Enter a symbol and press Analyze.</div>
+<section id="result" hidden>
+<div class="grid">
+<article class="card">
+<div class="identity"><div><div class="symbol" id="name"></div><div class="meta" id="meta"></div></div><div class="pill" id="source"></div></div>
+<div class="metrics">
+<div class="metric"><span>Price</span><strong id="price">—</strong></div>
+<div class="metric"><span>RSI</span><strong id="rsi">—</strong></div>
+<div class="metric"><span>Momentum</span><strong id="momentum">—</strong></div>
+<div class="metric"><span>Risk</span><strong id="risk">—</strong></div>
+</div>
+</article>
+<article class="card">
+<h2>Key Levels</h2><div class="levels"><div class="level"><span>Support</span><strong id="support">—</strong></div><div class="level"><span>Resistance</span><strong id="resistance">—</strong></div></div>
+</article>
+</div>
+<article class="card" style="margin-top:16px"><h2>Smart AI Report</h2><div class="report" id="report"></div></article>
+<article class="card" style="margin-top:16px"><h2>Timeframe Check</h2><div class="tfs" id="tfs"></div></article>
+<div class="disclaimer">Research and education only. Market conditions can change quickly. This analysis does not guarantee profit and is not personalized financial advice.</div>
+</section>
+</main>
+<script>
+(function(){
+const $=id=>document.getElementById(id), form=$('form'), input=$('symbol'), tf=$('tf'), lang=$('lang'), go=$('go'), result=$('result'), status=$('status');
+const fmt=(v,d=2)=>Number.isFinite(Number(v))?Number(v).toLocaleString('en-US',{maximumFractionDigits:d}):'—';
+function pairOf(v){v=String(v||'').trim().toUpperCase();return v.endsWith('USDT')?v:v+'USDT'}
+function bias(a){const b=Number(a&&a.bullScore||0),s=Number(a&&a.bearScore||0);return b>s+8?'Bullish':s>b+8?'Bearish':'Neutral'}
+function render(d){
+const a=d.analysis||{};$('name').textContent=(d.name||d.symbol||'').toUpperCase();
+$('meta').textContent=[d.sector,d.useCase].filter(Boolean).join(' · ');
+$('source').textContent=d.source||'Live technical engine';
+$('price').textContent=fmt(a.price);
+$('rsi').textContent=fmt(a.rsi,1);
+$('momentum').textContent=Number.isFinite(Number(a.momentum))?(Number(a.momentum)*100).toFixed(2)+'%':'—';
+$('risk').textContent=Number.isFinite(Number(a.riskScore))?fmt(a.riskScore,0)+'/100':'—';
+$('support').textContent=fmt(a.support);$('resistance').textContent=fmt(a.resistance);
+$('report').textContent=d.report||'No AI report was returned.';
+$('tfs').innerHTML='';
+(d.timeframes||[]).forEach(x=>{const a=x.analysis||{};const el=document.createElement('div');el.className='tf';el.innerHTML='<b>'+x.tf+'</b><small>'+bias(a)+'<br>RSI '+fmt(a.rsi,1)+' · Momentum '+(Number.isFinite(Number(a.momentum))?(Number(a.momentum)*100).toFixed(2)+'%':'—')+'<br>Volume '+fmt(a.volumeRatio,2)+'x</small>';$('tfs').appendChild(el)});
+result.hidden=false
+}
+form.addEventListener('submit',async e=>{
+e.preventDefault();const pair=pairOf(input.value);if(!/^[A-Z0-9]{2,20}USDT$/.test(pair)){status.textContent='Please enter a valid crypto symbol.';return}
+go.disabled=true;status.textContent='Loading live market data and building the AI analysis…';
+try{const r=await fetch('/api/ai/chart-analysis?symbol='+encodeURIComponent(pair)+'&tf='+encodeURIComponent(tf.value)+'&language='+encodeURIComponent(lang.value),{cache:'no-store'});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||'analysis_unavailable');render(d);status.textContent='Analysis updated for '+pair.replace(/USDT$/,'')+'. Last update: '+new Date(d.updatedAt||Date.now()).toLocaleString();}
+catch(err){result.hidden=true;status.textContent='Analysis could not be loaded right now. Please try again in a moment.'}
+finally{go.disabled=false}
+});
+})();
+</script>
+</body>
+</html>
