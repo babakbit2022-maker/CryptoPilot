@@ -18,6 +18,8 @@ jobs:
   rollback:
     if: ${{ github.event_name == "workflow_dispatch" || github.event.workflow_run.conclusion == "failure" }}
     runs-on: ubuntu-latest
+    env:
+      FAILED_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     environment:
       name: production
     steps:
@@ -28,10 +30,18 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT || "22" }}
+          envs: FAILED_SHA
           command_timeout: 10m
+          envs: FAILED_SHA
           script: |
             set -euo pipefail
             cd /opt/cryptopilot
+            test -n "$FAILED_SHA"
+            CURRENT_SHA="$(git rev-parse HEAD)"
+            if [ "$CURRENT_SHA" != "$FAILED_SHA" ]; then
+              echo "ROLLBACK_SKIPPED_NEWER_DEPLOYMENT:$CURRENT_SHA"
+              exit 0
+            fi
             test -f .rollback-sha
             PREV_SHA="$(cat .rollback-sha)"
             test -n "$PREV_SHA"
