@@ -42,7 +42,7 @@ async function ask(q){
  const c=coins.find(x=>String(x.symbol).toUpperCase()===symbol);
  box.innerHTML='<div class="answerHead"><b>CryptoPilot AI · '+esc(symbol)+'</b><span class="engine">ANALYZING</span></div><div class="answerBody"><div class="loading">Analyzing price, volume, momentum, support/resistance, and timeframes…</div></div>';
  try{
-  const r=await fetch('/api/ai/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:symbol+'USDT',question:q})});
+  const r=await fetch('/api/ai/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:symbol+'USDT',question:q,language:'en'})});
   const j=await r.json();if(!r.ok||!j.ok)throw Error(j.error||'ask');
   box.innerHTML='<div class="answerHead"><b>CryptoPilot AI Answer · '+esc(symbol)+'</b><span class="engine">AI ANALYSIS</span></div><div class="answerBody"><div class="facts"><div class="fact"><small>Price</small><b>'+money(c?.price)+'</b></div><div class="fact"><small>24h Change</small><b>'+((Number(c?.change24h)>=0?'+':'')+(c?.change24h==null?'—':Number(c.change24h).toFixed(2)+'%'))+'</b></div><div class="fact"><small>24h Volume</small><b>'+money(c?.volume24h)+'</b></div><div class="fact"><small>Market Cap</small><b>'+money(c?.marketCap)+'</b></div></div><div class="text" style="margin-top:15px">'+esc(j.answer||'No answer was received.')+'</div></div><div class="note">Educational analysis based on market data; it does not guarantee gains/losses or constitute personalized financial advice.</div>';
  }catch{box.innerHTML='<div class="answerHead"><b>CryptoPilot AI</b></div><div class="answerBody"><div class="loading">The AI analysis is temporarily unavailable. Please try again in a moment.</div></div>'}
