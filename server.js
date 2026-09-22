@@ -735,6 +735,10 @@ app.post('/api/ai/screenshot',auth,aiLimit,premium,async(req,res)=>{
 
 let dailyPickCache={t:0,data:null,running:false};
 
+function analysisPairsSeed(){
+  return ['BTC','ETH','SOL','BNB','XRP'].map((symbol,i)=>({symbol,pair:symbol+'USDT',name:symbol,change24h:0,price:null,marketCapRank:i+1}));
+}
+
 function utcDateKey(d=new Date()){return d.toISOString().slice(0,10);}
 async function getCurrentPrice(symbol){
   try{
@@ -821,6 +825,14 @@ async function computeDailyPicks(){
   if(dailyPickCache.running)return dailyPickCache.data;
   dailyPickCache.running=true;
   try{
+    // Seed from the already-persisted universe before the first await. This makes
+    // the HTTP endpoint immediately usable even during a complete provider outage.
+    const cachedUniverse=[...(cache.get('__universe')?.v||[])].filter(x=>x&&x.symbol&&Number.isFinite(Number(x.change24h)));
+    const seedUniverse=cachedUniverse.length?cachedUniverse:analysisPairsSeed();
+    const seed=[...seedUniverse].sort((a,b)=>Number(b.change24h||0)-Number(a.change24h||0)).slice(0,5).map((x,i)=>({symbol:String(x.symbol).toUpperCase(),pair:x.pair||String(x.symbol).toUpperCase()+'USDT',price:Number.isFinite(Number(x.price))?Number(x.price):null,rank:i+1,score:Math.round(Math.max(50,Math.min(99,50+Math.max(0,Number(x.change24h||0))*2))),confidence:'live-growth',signals:[{tf:'24h',setup:'TOP GROWTH',bull:null,bear:null,rsi:null,volumeRatio:null}]}));
+    if(seed.length>=5){
+      dailyPickCache={t:Date.now(),data:{ok:true,updatedAt:new Date().toISOString(),picks:seed,performance:{available:false,reason:'analysis_refreshing'},disclaimer:'Research-only signals. No pump or profit is guaranteed.'},running:true};
+    }
     await refreshMarketUniverse();
     const tfs=['15m','1h','4h']; const by=new Map();
     // Keep the scheduled pick calculation bounded to the core liquid pairs.
@@ -830,13 +842,6 @@ async function computeDailyPicks(){
     // Seed immediately from the live universe so the endpoint can never be held
     // hostage by a slow external technical-analysis provider.
     const universeNow=[...(cache.get('__universe')?.v||[])].filter(x=>x&&x.symbol&&Number.isFinite(Number(x.change24h)));
-    const seed=[...universeNow].sort((a,b)=>Number(b.change24h)-Number(a.change24h)).slice(0,5).map((x,i)=>({symbol:String(x.symbol).toUpperCase(),pair:x.pair||String(x.symbol).toUpperCase()+'USDT',price:Number(x.price)||null,rank:i+1,score:Math.round(Math.max(50,Math.min(99,50+Math.max(0,Number(x.change24h))*2))),confidence:'live-growth',signals:[{tf:'24h',setup:'TOP GROWTH',bull:null,bear:null,rsi:null,volumeRatio:null}]}));
-    // Publish the live-growth seed before any slow technical-analysis calls.
-    // Requests can therefore receive five current candidates even during provider degradation.
-    if(seed.length>=5){
-      dailyPickCache={t:Date.now(),data:{ok:true,updatedAt:new Date().toISOString(),picks:seed,performance:{available:false,reason:'analysis_refreshing'},disclaimer:'Research-only signals. No pump or profit is guaranteed.'},running:true};
-    }
-    if(seed.length) by.clear();
     await Promise.all(tfs.map(async tf=>{
       const batch=analysisPairs;
       await Promise.all(batch.map(async pair=>{
@@ -855,7 +860,8 @@ async function computeDailyPicks(){
       }));
     }));
     const analyzed=[...by.values()].filter(x=>x.tfCount>=2).sort((a,b)=>b.score-a.score).slice(0,5).map((x,i)=>({...x,rank:i+1,score:Math.round(Math.min(99,x.score/x.tfCount)),confidence:x.tfCount>=3?'multi-timeframe':'multi-signal'}));
-    const picks=analyzed.length>=5?analyzed:seed;
+    const picks=analyzed.length?analyzed.slice(0,5):[];
+    for(const x of seed){if(picks.length>=5)break;if(!picks.some(p=>p.symbol===x.symbol))picks.push({...x,rank:picks.length+1});}
     // If analysis produced fewer than five, fill from the live universe while
     // preserving any analyzed picks already selected.
     const existing=new Set(picks.map(x=>x.symbol));
