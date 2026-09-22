@@ -47,6 +47,19 @@ jobs:
             test -n "$DEPLOY_SHA"
             mkdir -p /opt/cryptopilot
             cd /opt/cryptopilot
+            BACKUP_DIR="/opt/cryptopilot-backups"
+            STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+            mkdir -p "$BACKUP_DIR"
+            if [ -d .git ]; then
+              PREV_SHA="$(git rev-parse HEAD || true)"
+              if [ -n "$PREV_SHA" ]; then
+                git archive --format=tar.gz --prefix="cryptopilot-$PREV_SHA/" "$PREV_SHA" > "$BACKUP_DIR/source-$STAMP-$PREV_SHA.tar.gz"
+                echo "$PREV_SHA" > .rollback-sha
+              fi
+            fi
+            if [ -f /etc/cryptopilot.env ]; then install -m 600 /etc/cryptopilot.env "$BACKUP_DIR/env-$STAMP"; fi
+            if [ -f cryptopilot.db ]; then cp -p cryptopilot.db "$BACKUP_DIR/db-$STAMP.sqlite"; fi
+            find "$BACKUP_DIR" -type f -mtime +14 -delete
             if [ ! -d .git ]; then
               git clone https://github.com/babakbit2022-maker/CryptoPilot.git .
             fi
