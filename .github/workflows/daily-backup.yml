@@ -1,0 +1,46 @@
+name: CryptoPilot Daily Backup
+
+on:
+  schedule:
+    - cron: "41 2 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: cryptopilot-daily-backup
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    steps:
+      - name: Run VPS backup
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: 87.107.190.74
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || "22" }}
+          command_timeout: 10m
+          script: |
+            set -euo pipefail
+            bash /opt/cryptopilot/scripts/guardian-backup.sh
+            test -d /opt/cryptopilot-backups
+            find /opt/cryptopilot-backups -type f -mtime -2 | head -1 | grep .
+            echo "DAILY_BACKUP_VERIFIED"
+      - name: Report backup failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title="🚨 CryptoPilot daily backup failed"; const marker="<!-- cryptopilot-daily-backup -->";
+            const body=[marker,"The scheduled VPS backup failed.","No application or payment configuration was changed.","","Run: "+context.runId,"Time: "+new Date().toISOString()].join("\n");
+            const {data:issues}=await github.rest.issues.listForRepo({owner:context.repo.owner,repo:context.repo.repo,state:"open",per_page:50});
+            const existing=issues.find(i=>i.title===title&&i.body?.includes(marker));
+            if(!existing) await github.rest.issues.create({owner:context.repo.owner,repo:context.repo.repo,title,body});
+            else await github.rest.issues.createComment({owner:context.repo.owner,repo:context.repo.repo,issue_number:existing.number,body:"Backup failed again. Run "+context.runId});
