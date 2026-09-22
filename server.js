@@ -36,6 +36,17 @@ CREATE INDEX IF NOT EXISTS idx_daily_pick_results_run ON daily_pick_results(run_
 app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : false);
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json({ limit: '12mb' }));
+app.use(async (req,res,next)=>{
+  const p=req.path==='/'?'index.html':(req.path.endsWith('.html')?req.path.slice(1):'');
+  if(p){
+    try{
+      const file=fs.readFileSync('public/'+p,'utf8');
+      if(!file.includes('src="/i18n.js"')) return res.type('html').send(file.replace(/<\\/body>/i,'<script src="/i18n.js"></script></body>'));
+      return res.type('html').send(file);
+    }catch{}
+  }
+  next();
+});
 app.use(express.static('public', { extensions: ['html'] }));
 const authLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
 const apiLimit = rateLimit({ windowMs: 60 * 1000, max: 120, standardHeaders: true, legacyHeaders: false });
