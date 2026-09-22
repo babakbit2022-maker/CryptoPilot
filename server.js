@@ -154,6 +154,27 @@ async function refreshMarketUniverseFresh(){
       pages.push(...j.data);
     }
     const market=pages.slice(0,500);
+    // Enrich the CMC market list with real coin logos from CoinGecko.
+    // If the logo feed is unavailable, market data still loads normally.
+    let logoMap=new Map();
+    try{
+      const gr=await marketFetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&sparkline=false',{headers:{accept:'application/json'},signal:AbortSignal.timeout(10000)});
+      if(gr.ok){
+        const gj=await gr.json();
+        if(Array.isArray(gj))for(const x of gj){
+          const key=String(x.symbol||'').toUpperCase();
+          if(key&&!logoMap.has(key))logoMap.set(key,String(x.image||''));
+        }
+      }
+      const gr2=await marketFetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=2&sparkline=false',{headers:{accept:'application/json'},signal:AbortSignal.timeout(10000)});
+      if(gr2.ok){
+        const gj2=await gr2.json();
+        if(Array.isArray(gj2))for(const x of gj2){
+          const key=String(x.symbol||'').toUpperCase();
+          if(key&&!logoMap.has(key))logoMap.set(key,String(x.image||''));
+        }
+      }
+    }catch{}
     const seen=new Set(),v=[];
     for(const c of market){
       const symbol=String(c.symbol||'').toUpperCase();
@@ -162,8 +183,10 @@ async function refreshMarketUniverseFresh(){
       seen.add(pair);
       symbols[pair]=symbol;
       const quote=c.quote?.USD||{};
-      symbolMeta.set(pair,{symbol,coingeckoId:null,marketCap:quote.market_cap||0,marketCapRank:c.cmc_rank||null,name:c.name||symbol,image:null});
-      v.push({pair,symbol,name:c.name||symbol,marketCap:quote.market_cap??null,marketCapRank:c.cmc_rank??null,image:null,change24h:quote.percent_change_24h??null,price:quote.price??null,volume24h:quote.volume_24h??null,circulatingSupply:c.circulating_supply??null,totalSupply:c.total_supply??null,maxSupply:c.max_supply??null,chartable:true,provider:'CoinMarketCap live market feed'});
+      const image=logoMap.get(symbol)||'';
+      symbolMeta.set(pair,{symbol,coingeckoId:null,marketCap:quote.market_cap||0,marketCapRank:c.cmc_rank||null,name:c.name||symbol,image});
+
+      v.push({pair,symbol,name:c.name||symbol,marketCap:quote.market_cap??null,marketCapRank:c.cmc_rank??null,image,change24h:quote.percent_change_24h??null,price:quote.price??null,volume24h:quote.volume_24h??null,circulatingSupply:c.circulating_supply??null,totalSupply:c.total_supply??null,maxSupply:c.max_supply??null,chartable:true,provider:'CoinMarketCap live market feed'});
     }
     if(v.length<100)throw new Error('coinmarketcap insufficient');
     cache.set('__universe',{t:now,v});
