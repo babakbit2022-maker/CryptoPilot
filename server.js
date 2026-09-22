@@ -841,6 +841,26 @@ async function computeDailyPicks(){
       }));
     }));
     const picks=[...by.values()].filter(x=>x.tfCount>=2).sort((a,b)=>b.score-a.score).slice(0,5).map((x,i)=>({...x,rank:i+1,score:Math.round(Math.min(99,x.score/x.tfCount)),confidence:x.tfCount>=3?'multi-timeframe':'multi-signal'}));
+    // Always keep the Daily AI Picks panel populated with exactly five candidates.
+    // If multi-timeframe analysis is temporarily rate-limited/unavailable, fall back
+    // to the live market universe's strongest 24h movers rather than returning zero picks.
+    if(picks.length<5){
+      const existing=new Set(picks.map(x=>x.symbol));
+      const fallback=[...(cache.get('__universe')?.v||[])]
+        .filter(x=>x&&x.symbol&&!existing.has(x.symbol)&&Number.isFinite(Number(x.change24h)))
+        .sort((a,b)=>Number(b.change24h)-Number(a.change24h))
+        .slice(0,5-picks.length)
+        .map((x,i)=>({
+          symbol:String(x.symbol).toUpperCase(),
+          pair:x.pair||String(x.symbol).toUpperCase()+'USDT',
+          price:Number(x.price)||null,
+          rank:picks.length+i+1,
+          score:Math.round(Math.max(50,Math.min(99,50+Math.max(0,Number(x.change24h))*2))),
+          confidence:'live-growth',
+          signals:[{tf:'24h',setup:'TOP GROWTH',bull:x.bullScore,bear:x.bearScore,rsi:x.rsi,volumeRatio:x.volumeRatio}]
+        }));
+      picks.push(...fallback);
+    }
     const runId=await recordDailyPickRun(picks);
     recordDailyPickSnapshots(runId,picks);
     const performance=await getDailyPerformance(1);
