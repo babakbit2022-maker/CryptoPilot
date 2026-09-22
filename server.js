@@ -30,7 +30,7 @@ CREATE INDEX IF NOT EXISTS idx_daily_pick_items_run ON daily_pick_items(run_id,r
 app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : false);
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json({ limit: '100kb' }));
-app.get(/^\\/.*\\.html$/i, async (req,res,next)=>{try{const file=req.path.replace(/^\\/+/,''),safe=file.replace(/\\.\\./g,'');const html=await readFile(new URL('./public/'+safe,import.meta.url),'utf8');const injected=html.includes('/i18n.js')?html:html.replace('</body>','<script src="/i18n.js"></script></body>');res.type('html').send(injected);}catch{next();}});
+app.get(/^\/(?:.*\.html)?$/i, async (req,res,next)=>{try{const file=req.path==='/'?'index.html':req.path.replace(/^\/+/,''),safe=file.replace(/\.\./g,'');const html=await readFile(new URL('./public/'+safe,import.meta.url),'utf8');const injected=html.includes('/i18n.js')?html:html.replace('</body>','<script src="/i18n.js"></script></body>');res.type('html').send(injected);}catch{next();}});
 app.use(express.static('public', { extensions: ['html'] }));
 const authLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
 const apiLimit = rateLimit({ windowMs: 60 * 1000, max: 120, standardHeaders: true, legacyHeaders: false });
