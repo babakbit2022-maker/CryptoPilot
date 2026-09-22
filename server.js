@@ -823,8 +823,17 @@ async function computeDailyPicks(){
   try{
     await refreshMarketUniverse();
     const tfs=['15m','1h','4h']; const by=new Map();
+    // Keep the scheduled pick calculation bounded to the core liquid pairs.
+    // The market universe can contain 500 assets, but analyzing all of them here
+    // makes a cold-start request wait on hundreds of external calls.
+    const analysisPairs=['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT','DOGEUSDT','ADAUSDT','AVAXUSDT','LINKUSDT','DOTUSDT','LTCUSDT','TRXUSDT'];
+    // Seed immediately from the live universe so the endpoint can never be held
+    // hostage by a slow external technical-analysis provider.
+    const universeNow=[...(cache.get('__universe')?.v||[])].filter(x=>x&&x.symbol&&Number.isFinite(Number(x.change24h)));
+    const seed=[...universeNow].sort((a,b)=>Number(b.change24h)-Number(a.change24h)).slice(0,5).map((x,i)=>({symbol:String(x.symbol).toUpperCase(),pair:x.pair||String(x.symbol).toUpperCase()+'USDT',price:Number(x.price)||null,rank:i+1,score:Math.round(Math.max(50,Math.min(99,50+Math.max(0,Number(x.change24h))*2))),confidence:'live-growth',signals:[{tf:'24h',setup:'TOP GROWTH',bull:null,bear:null,rsi:null,volumeRatio:null}]}));
+    if(seed.length) by.clear();
     await Promise.all(tfs.map(async tf=>{
-      const batch=Object.keys(symbols).slice(0,60);
+      const batch=analysisPairs;
       await Promise.all(batch.map(async pair=>{
         try{
           const j=await getAnalysis(pair,tf),a=j.analysis;if(!a||!Number.isFinite(a.price))return;
@@ -840,12 +849,15 @@ async function computeDailyPicks(){
         }catch{}
       }));
     }));
-    const picks=[...by.values()].filter(x=>x.tfCount>=2).sort((a,b)=>b.score-a.score).slice(0,5).map((x,i)=>({...x,rank:i+1,score:Math.round(Math.min(99,x.score/x.tfCount)),confidence:x.tfCount>=3?'multi-timeframe':'multi-signal'}));
+    const analyzed=[...by.values()].filter(x=>x.tfCount>=2).sort((a,b)=>b.score-a.score).slice(0,5).map((x,i)=>({...x,rank:i+1,score:Math.round(Math.min(99,x.score/x.tfCount)),confidence:x.tfCount>=3?'multi-timeframe':'multi-signal'}));
+    const picks=analyzed.length>=5?analyzed:seed;
+    // If analysis produced fewer than five, fill from the live universe while
+    // preserving any analyzed picks already selected.
+    const existing=new Set(picks.map(x=>x.symbol));
     // Always keep the Daily AI Picks panel populated with exactly five candidates.
     // If multi-timeframe analysis is temporarily rate-limited/unavailable, fall back
     // to the live market universe's strongest 24h movers rather than returning zero picks.
     if(picks.length<5){
-      const existing=new Set(picks.map(x=>x.symbol));
       const fallback=[...(cache.get('__universe')?.v||[])]
         .filter(x=>x&&x.symbol&&!existing.has(x.symbol)&&Number.isFinite(Number(x.change24h)))
         .sort((a,b)=>Number(b.change24h)-Number(a.change24h))
