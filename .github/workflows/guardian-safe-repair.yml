@@ -1,0 +1,75 @@
+name: CryptoPilot Safe Repair
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Open incident issue number to diagnose"
+        required: false
+        type: string
+      dry_run:
+        description: "Diagnose and test only; do not create a PR"
+        required: false
+        default: true
+        type: boolean
+
+concurrency:
+  group: cryptopilot-safe-repair
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    steps:
+      - name: Checkout production branch
+        uses: actions/checkout@v5
+        with:
+          ref: appdeploy-vps-transfer-20260919
+          fetch-depth: 0
+
+      - name: Install dependencies and run baseline checks
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npm run check
+
+      - name: Inspect incident and production
+        env:
+          BASE_URL: http://87.107.190.74
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 20 "$BASE_URL/api/health"
+          curl --fail --silent --show-error --max-time 20 "$BASE_URL/api/ready"
+          echo "INCIDENT=${{ inputs.issue_number }}"
+
+      - name: Create isolated repair branch
+        if: ${{ inputs.dry_run == false }}
+        id: branch
+        run: |
+          set -euo pipefail
+          NAME="guardian-repair-${GITHUB_RUN_ID}"
+          git checkout -b "$NAME"
+          git push origin "$NAME"
+          echo "branch=$NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Run production smoke test
+        env:
+          BASE_URL: http://87.107.190.74
+        run: node .github/production-smoke.mjs
+
+      - name: Create repair PR only for review
+        if: ${{ inputs.dry_run == false }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPAIR_BRANCH: ${{ steps.branch.outputs.branch }}
+        run: |
+          set -euo pipefail
+          gh pr create --base appdeploy-vps-transfer-20260919 --head "$REPAIR_BRANCH" --title "Guardian safe repair candidate #$GITHUB_RUN_ID" --body "Automated Guardian candidate. No source-code repair is applied from a generic health failure; human review is required before merge."
