@@ -671,6 +671,7 @@ app.get('/api/screenshot-assets',optionalAuth,apiLimit,async(req,res)=>{
 app.post('/api/ai/screenshot',auth,aiLimit,premium,async(req,res)=>{
   const symbol=String(req.body?.symbol||'BTCUSDT').toUpperCase();
   const image=String(req.body?.image||'');
+  const language=String(req.body?.language||'fa').toLowerCase()==='en'?'en':'fa';
   if(!/^[A-Z0-9]{2,20}USDT$/.test(symbol))return res.status(400).json({error:'unsupported_market'});
   if(!/^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=]+$/.test(image))return res.status(400).json({error:'invalid_image'});
   if(image.length>11000000)return res.status(413).json({error:'image_too_large'});
@@ -695,7 +696,7 @@ app.post('/api/ai/screenshot',auth,aiLimit,premium,async(req,res)=>{
     let analysis;try{analysis=JSON.parse(cleaned)}catch{throw Error('invalid_vision_json');}
     if(!analysis||typeof analysis!=='object')throw Error('invalid_vision_json');
     if(!Array.isArray(analysis.points))analysis.points=[];
-    analysis.points=analysis.points.slice(0,6).map((p,i)=>({id:i+1,x:Math.max(0,Math.min(100,Number(p.x)||50)),y:Math.max(0,Math.min(100,Number(p.y)||50)),title:String(p.title||'نقطه مهم روی چارت'),explanation:String(p.explanation||''),lesson:String(p.lesson||''),type:String(p.type||'trend')}));
+    analysis.points=analysis.points.slice(0,6).map((p,i)=>({id:i+1,x:Math.max(0,Math.min(100,Number(p.x)||50)),y:Math.max(0,Math.min(100,Number(p.y)||50)),title:String(p.title||(language==='en'?'Important chart point':'نقطه مهم روی چارت')),explanation:String(p.explanation||''),lesson:String(p.lesson||''),type:String(p.type||'trend')}));
     if(!String(analysis.summary||'').trim()&&!analysis.points.length)throw Error('empty_vision');
     res.json({ok:true,source:'1xai',model:models[0],symbol,asOf:new Date().toISOString(),analysis});
   }catch(e){
