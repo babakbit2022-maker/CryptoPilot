@@ -1,0 +1,17 @@
+/* CryptoPilot 3D visual layer — visual only. Functional layout/data untouched. */
+:root{--cp3d-depth:0 28px 70px rgba(0,0,0,.34),0 8px 22px rgba(0,0,0,.22)}
+body{perspective:1400px}
+.heroMain,.heroSide,.growthBanner,.riskPanel,.picksPanel,.panel{position:relative;transform-style:preserve-3d;box-shadow:var(--cp3d-depth);transition:transform .28s ease,box-shadow .28s ease,border-color .28s ease}
+.heroMain:hover,.heroSide:hover,.growthBanner:hover,.riskPanel:hover,.picksPanel:hover,.panel:hover{transform:translateY(-3px) rotateX(.7deg);box-shadow:0 34px 90px rgba(0,0,0,.4),0 10px 30px rgba(72,185,255,.08)}
+.heroMain:before,.heroSide:before,.growthBanner:before,.riskPanel:before,.picksPanel:before,.panel:before{content:"";position:absolute;inset:1px;border-radius:inherit;pointer-events:none;background:linear-gradient(135deg,rgba(255,255,255,.09),transparent 22%,transparent 72%,rgba(72,185,255,.055));transform:translateZ(1px)}
+.logo{transform:translateZ(18px) rotateX(5deg) rotateY(-7deg);box-shadow:0 14px 32px rgba(72,185,255,.28),inset 0 1px 0 rgba(255,255,255,.35)}
+.coinCard,.growthItem,.pick,.statusBox,.metric{transform-style:preserve-3d;transition:transform .22s ease,box-shadow .22s ease,border-color .22s ease}
+.coinCard:hover,.growthItem:hover,.pick:hover,.statusBox:hover,.metric:hover{transform:translateY(-4px) translateZ(10px) rotateX(1deg);box-shadow:0 16px 35px rgba(0,0,0,.28);border-color:#3b6c8e}
+.bigScore{transform:translateZ(22px);text-shadow:0 8px 28px rgba(100,230,255,.16)}
+.riskCircle{transform:translateZ(14px);box-shadow:0 18px 38px rgba(53,214,155,.12),inset 0 2px 8px rgba(255,255,255,.08)}
+.riskCircle:after{box-shadow:inset 0 3px 12px rgba(0,0,0,.45)}
+.live{box-shadow:0 8px 24px rgba(53,214,155,.1),inset 0 1px 0 rgba(255,255,255,.08)}
+.topbar{box-shadow:0 12px 35px rgba(0,0,0,.2)}
+.chip{box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 5px 15px rgba(0,0,0,.16)}
+@media(max-width:650px){.heroMain:hover,.heroSide:hover,.growthBanner:hover,.riskPanel:hover,.picksPanel:hover,.panel:hover{transform:translateY(-2px)}.coinCard:hover,.growthItem:hover,.pick:hover,.statusBox:hover,.metric:hover{transform:translateY(-2px)}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{transition:none!important;transform:none!important}}
