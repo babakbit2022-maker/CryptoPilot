@@ -41,7 +41,7 @@ app.use(async (req,res,next)=>{
   if(p){
     try{
       const file=fs.readFileSync('public/'+p,'utf8');
-      if(!file.includes('src="/i18n.js"')) return res.type('html').send(file.replace(/<\\/body>/i,'<script src="/i18n.js"></script></body>'));
+      if(!file.includes('src="/i18n.js"')) return res.type('html').send(file.replace(/<\/body>/i,'<script src="/i18n.js"></script></body>'));
       return res.type('html').send(file);
     }catch{}
   }
