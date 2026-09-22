@@ -30,7 +30,6 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT || "22" }}
-          envs: FAILED_SHA
           command_timeout: 10m
           envs: FAILED_SHA
           script: |
