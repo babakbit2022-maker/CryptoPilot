@@ -120,3 +120,19 @@ jobs:
                 exit 2
                 ;;
             esac
+
+      - name: Verify public production response
+        if: steps.op.outputs.operation == 'verify'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$(curl --fail --silent --show-error --max-time 30 http://87.107.190.74/)"
+          echo "lang_en=$(printf '%s' "$ROOT" | grep -Fc '<html lang="en">')"
+          echo "i18n=$(printf '%s' "$ROOT" | grep -Fci '/i18n.js' || true)"
+          echo "language_selector=$(printf '%s' "$ROOT" | grep -Eci 'language-selector|Language selector' || true)"
+          for marker in growthViewport marketStats marketVolume marketSupply; do
+            printf '%s' "$ROOT" | grep -Fq "$marker"
+            echo "marker_$marker=PASS"
+          done
+          ! printf '%s' "$ROOT" | grep -Eqi 'language-selector|Language selector|/i18n\\.js'
+          echo "PUBLIC_VERIFY: PASS"
