@@ -162,7 +162,7 @@ async function loadDailyIntelligence(){
   if(!p.premium){
     perfValue.textContent='🔒'; perfValue.className='perfValue';
     perfMeta.textContent='Premium members only · 24h verified historical results';
-    perfList.innerHTML='<div class="statusBox" style="grid-column:1/-1;text-align:center"><small>Premium historical report</small><strong>Unlock to view Yesterday\'s exact results</strong><div class="muted" style="font-size:9px;margin-top:4px">You\'ll see all 5 picks, recorded entry price, 24-hour exit price, exact percentage change, positive/negative count, and the data timestamp.</div><a href="/payment.html" style="display:inline-block;margin-top:8px;color:var(--cyan);font-weight:800;text-decoration:none">Unlock Premium · USDT →</a></div>';
+    perfList.innerHTML='<div class="statusBox" style="grid-column:1/-1;text-align:center"><small>Premium historical report</small><strong>Unlock to view Yesterday\'s exact results</strong><div class="muted" style="font-size:9px;margin-top:4px">You\'ll see all 5 picks, recorded entry price, 24-hour exit price, exact percentage change, positive/negative count, and the data timestamp.</div></div>';
   }else if(perf.available && Array.isArray(perf.picks) && perf.picks.length){
     const v=Number(perf.averageReturn);
     perfValue.textContent=Number.isFinite(v)?(v>=0?'+':'')+v.toFixed(2)+'%':'—';
