@@ -41,9 +41,15 @@ jobs:
           check "market-stats" "$BASE/api/market-stats" '"ok"'
           check "top-gainers" "$BASE/api/top-gainers" '"ok"'
           check "daily-picks" "$BASE/api/daily-picks" '"picks"'
+          picks_body="$(curl --silent --show-error --max-time 20 "$BASE/api/daily-picks" 2>&1)" || { echo "FAIL daily-picks-count: curl"; fail=1; picks_body=""; }
+          if [ -n "$picks_body" ]; then
+            PICKS_COUNT="$(printf '%s' "$picks_body" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s);process.stdout.write(String(Array.isArray(x.picks)?x.picks.length:0))}catch{process.stdout.write("0")}})')"
+            if [ "${PICKS_COUNT:-0}" -lt 5 ]; then echo "FAIL daily-picks-count: expected at least 5, got ${PICKS_COUNT:-0}"; fail=1; else echo "PASS daily-picks-count (${PICKS_COUNT})"; fi
+          fi
           check "scanner" "$BASE/api/scanner" '"ok"'
           check "homepage" "$BASE/" 'growthViewport'
           check "screenshot-assets" "$BASE/api/screenshot-assets" '"ok":true'
+          check "i18n-script" "$BASE/i18n.js" 'CryptoPilotSetLanguage'
           if [ "$fail" -ne 0 ]; then
             echo "GUARDIAN_STATUS=FAIL" >> "$GITHUB_OUTPUT"
             exit 1
