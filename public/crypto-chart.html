@@ -23,4 +23,4 @@ canvas.addEventListener('pointermove',e=>{if(!dragging||!candles.length)return;c
 canvas.addEventListener('pointerup',e=>{dragging=false;canvas.releasePointerCapture?.(e.pointerId);canvas.style.cursor='default'});
 canvas.addEventListener('pointercancel',()=>{dragging=false;canvas.style.cursor='default'});
 loadCoins().then(load);setInterval(load,5000);setInterval(loadCoins,300000);
-</script><script src="/ai-analyst.js" defer></script><script src="/ai-memory.js" defer></script><script src="/i18n.js"></script></body></html>
+</script><script src="/ai-analyst.js" defer></script><script src="/ai-memory.js" defer></script></body></html>
