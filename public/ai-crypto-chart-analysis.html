@@ -21,7 +21,7 @@
 <p>Enter any supported crypto symbol and CryptoPilot AI will combine live market data with 15m, 1h, 4h and 1d technical conditions to produce a clear overall analysis.</p>
 </section>
 <form class="search" id="form">
-<input id="symbol" value="BTC" placeholder="Enter coin symbol, e.g. BTC, ETH, SOL" autocomplete="off" aria-label="Coin symbol">
+<input id="symbol" list="coinList" value="BTC" placeholder="Search coin, e.g. BTC, ETH, SOL" autocomplete="off" aria-label="Coin symbol"><datalist id="coinList"></datalist>
 <select id="tf" aria-label="Primary timeframe"><option value="15m">15m</option><option value="1h" selected>1h</option><option value="4h">4h</option><option value="1d">1d</option></select>
 <select id="lang" aria-label="Analysis language"><option value="en" selected>English</option><option value="fa">فارسی</option><option value="ru">Русский</option></select>
 <button id="go" type="submit">Analyze</button>
@@ -51,6 +51,7 @@
 (function(){
 const $=id=>document.getElementById(id), form=$('form'), input=$('symbol'), tf=$('tf'), lang=$('lang'), go=$('go'), result=$('result'), status=$('status');
 const fmt=(v,d=2)=>Number.isFinite(Number(v))?Number(v).toLocaleString('en-US',{maximumFractionDigits:d}):'—';
+async function loadCoins(){try{const r=await fetch('/api/coins',{cache:'no-store'});const d=await r.json();const list=$('coinList');list.innerHTML='';(d.coins||[]).forEach(x=>{const o=document.createElement('option');o.value=String(x.symbol||'').toUpperCase();o.label=String(x.name||x.symbol||'');list.appendChild(o)});status.textContent=(d.coins||[]).length+' live assets available. Enter a symbol or choose from the list.'}catch{status.textContent='Live asset list is temporarily unavailable. You can still enter a symbol manually.'}}
 function pairOf(v){v=String(v||'').trim().toUpperCase();return v.endsWith('USDT')?v:v+'USDT'}
 function bias(a){const b=Number(a&&a.bullScore||0),s=Number(a&&a.bearScore||0);return b>s+8?'Bullish':s>b+8?'Bearish':'Neutral'}
 function render(d){
@@ -74,6 +75,7 @@ try{const r=await fetch('/api/ai/chart-analysis?symbol='+encodeURIComponent(pair
 catch(err){result.hidden=true;status.textContent='Analysis could not be loaded right now. Please try again in a moment.'}
 finally{go.disabled=false}
 });
+loadCoins();
 })();
 </script>
 </body>
