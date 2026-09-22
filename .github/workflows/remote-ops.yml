@@ -29,7 +29,7 @@ jobs:
           set -euo pipefail
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import json
-          allowed={"health","status","smoke","restart","backup","diagnostics"}
+          allowed={"health","status","smoke","restart","backup","diagnostics","verify"}
           with open(".github/ops-command.json", encoding="utf-8") as f:
               x=json.load(f)
           op=x.get("operation")
@@ -98,6 +98,23 @@ jobs:
                 test -x /opt/cryptopilot/scripts/guardian-diagnostics.sh
                 /opt/cryptopilot/scripts/guardian-diagnostics.sh
                 ;;
+              verify)
+                echo "=== DEPLOYED SHA ==="
+                git -C /opt/cryptopilot rev-parse HEAD
+                echo "=== DAILY PICKS ==="
+                curl --fail --silent --show-error --max-time 30 http://127.0.0.1/api/daily-picks
+                echo
+                echo "=== HOMEPAGE MARKERS ==="
+                curl --fail --silent --show-error --max-time 30 http://127.0.0.1/ >/tmp/cryptopilot-verify.html
+                grep -q '<html lang="en">' /tmp/cryptopilot-verify.html
+                ! grep -Eqi 'language-selector|Language selector|/i18n\\.js' /tmp/cryptopilot-verify.html
+                grep -q 'growthViewport' /tmp/cryptopilot-verify.html
+                grep -q 'marketStats' /tmp/cryptopilot-verify.html
+                grep -q 'marketVolume' /tmp/cryptopilot-verify.html
+                grep -q 'marketSupply' /tmp/cryptopilot-verify.html
+                echo "VERIFY: PASS"
+                ;;
+
               *)
                 echo "Unsupported operation" >&2
                 exit 2
