@@ -831,6 +831,11 @@ async function computeDailyPicks(){
     // hostage by a slow external technical-analysis provider.
     const universeNow=[...(cache.get('__universe')?.v||[])].filter(x=>x&&x.symbol&&Number.isFinite(Number(x.change24h)));
     const seed=[...universeNow].sort((a,b)=>Number(b.change24h)-Number(a.change24h)).slice(0,5).map((x,i)=>({symbol:String(x.symbol).toUpperCase(),pair:x.pair||String(x.symbol).toUpperCase()+'USDT',price:Number(x.price)||null,rank:i+1,score:Math.round(Math.max(50,Math.min(99,50+Math.max(0,Number(x.change24h))*2))),confidence:'live-growth',signals:[{tf:'24h',setup:'TOP GROWTH',bull:null,bear:null,rsi:null,volumeRatio:null}]}));
+    // Publish the live-growth seed before any slow technical-analysis calls.
+    // Requests can therefore receive five current candidates even during provider degradation.
+    if(seed.length>=5){
+      dailyPickCache={t:Date.now(),data:{ok:true,updatedAt:new Date().toISOString(),picks:seed,performance:{available:false,reason:'analysis_refreshing'},disclaimer:'Research-only signals. No pump or profit is guaranteed.'},running:true};
+    }
     if(seed.length) by.clear();
     await Promise.all(tfs.map(async tf=>{
       const batch=analysisPairs;
@@ -886,7 +891,7 @@ async function computeDailyPicks(){
 
 app.get('/api/daily-picks',optionalAuth,async(req,res)=>{
   const fresh=dailyPickCache.data&&Date.now()-dailyPickCache.t<5*60*1000;
-  if(!fresh)await computeDailyPicks();
+  if(!fresh && !dailyPickCache.running)computeDailyPicks().catch(()=>{});
   if(!dailyPickCache.data)return res.status(503).json({error:'daily_picks_unavailable'});
   const d=dailyPickCache.data;
   const isPremium=req.user?.plan==='premium';
