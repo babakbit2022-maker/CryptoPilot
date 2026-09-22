@@ -1,0 +1,92 @@
+name: CryptoPilot Guardian
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: cryptopilot-guardian
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  guardian:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run production health checks
+        id: check
+        shell: bash
+        run: |
+          set -uo pipefail
+          BASE="http://87.107.190.74"
+          fail=0
+          check() {
+            name="$1"; url="$2"; pattern="${3:-}"
+            body="$(curl --silent --show-error --max-time 20 --connect-timeout 8 -w $'\n%{http_code}' "$url" 2>&1)" || { echo "FAIL $name: curl"; fail=1; return; }
+            code="${body##*$'\n'}"
+            payload="${body%$'\n'*}"
+            if [ "$code" != "200" ]; then echo "FAIL $name: HTTP $code"; fail=1; return; fi
+            if [ -n "$pattern" ] && ! printf '%s' "$payload" | grep -Fq "$pattern"; then
+              echo "FAIL $name: expected marker missing"; fail=1; return
+            fi
+            echo "PASS $name"
+          }
+          check "health" "$BASE/api/health" '"ok"'
+          check "ready" "$BASE/api/ready" '"ready"'
+          check "coins" "$BASE/api/coins" '"count"'
+          check "market-stats" "$BASE/api/market-stats" '"ok"'
+          check "top-gainers" "$BASE/api/top-gainers" '"ok"'
+          check "daily-picks" "$BASE/api/daily-picks" '"picks"'
+          check "scanner" "$BASE/api/scanner" '"ok"'
+          check "homepage" "$BASE/" 'growthViewport'
+          check "screenshot-assets" "$BASE/api/screenshot-assets" '"ok":true'
+          if [ "$fail" -ne 0 ]; then
+            echo "GUARDIAN_STATUS=FAIL" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          echo "GUARDIAN_STATUS=PASS" >> "$GITHUB_OUTPUT"
+          echo "All production checks passed."
+
+      - name: Open/update incident issue
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = '🚨 CryptoPilot Guardian detected a production problem';
+            const marker = '<!-- cryptopilot-guardian -->';
+            const body = [
+              marker,
+              'Guardian detected one or more failed production checks.',
+              '',
+              'Run: ' + context.runId,
+              'Commit: ' + context.sha,
+              'Time: ' + new Date().toISOString(),
+              '',
+              'This is an alert only. No code or payment configuration is changed automatically by the Guardian.'
+            ].join('\n');
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 50
+            });
+            const existing = issues.find(i => i.title === title && i.body?.includes(marker));
+            if (!existing) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body: 'Guardian failed again. Run: ' + context.runId + ' at ' + new Date().toISOString()
+              });
+            }
