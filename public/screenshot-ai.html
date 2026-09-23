@@ -82,6 +82,22 @@ $('file').addEventListener('change',()=>{
   $('markers').innerHTML='';
 });
 
+async function prepareImage(file){
+  const bitmap=await createImageBitmap(file);
+  const maxSide=1600;
+  const scale=Math.min(1,maxSide/Math.max(bitmap.width,bitmap.height));
+  const canvas=document.createElement('canvas');
+  canvas.width=Math.max(1,Math.round(bitmap.width*scale));
+  canvas.height=Math.max(1,Math.round(bitmap.height*scale));
+  const ctx=canvas.getContext('2d',{alpha:false});
+  ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);
+  bitmap.close();
+  const blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error('image_encode_failed')),'image/jpeg',0.82));
+  const optimized=(blob.size/1024/1024).toFixed(2);
+  $('fileStatus').textContent='Optimized image · '+optimized+' MB · '+canvas.width+'×'+canvas.height;
+  return await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(blob)});
+}
+
 function showAnalysis(a){
   const points=Array.isArray(a.points)?a.points:[];
   $('markers').innerHTML=points.map((p,i)=>{
@@ -103,7 +119,7 @@ $('go').onclick=async()=>{
   out.textContent='Analyzing the actual image and live market context…';
   $('go').disabled=true;
   try{
-    const data=await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(f)});
+    const data=await prepareImage(f);
     const r=await fetch('/api/ai/screenshot',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({symbol,image:data,language:'en'})});
     const j=await r.json();
     if(!r.ok||!j.ok){
