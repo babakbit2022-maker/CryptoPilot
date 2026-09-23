@@ -132,49 +132,53 @@ async function refreshMarketUniverse(){
   }
   return refreshMarketUniverseFresh();
 }
+async function enrichUniverseLogosBackground(baseRows){
+  try{
+    const logoMap=new Map();
+    const urls=[1,2].map(page=>'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page='+page+'&sparkline=false');
+    const results=await Promise.allSettled(urls.map(u=>marketFetch(u,{headers:{accept:'application/json'},signal:AbortSignal.timeout(8000)})));
+    for(const rr of results){
+      if(rr.status!=='fulfilled'||!rr.value.ok)continue;
+      const data=await rr.value.json();
+      if(Array.isArray(data))for(const x of data){
+        const key=String(x.symbol||'').toUpperCase();
+        if(key&&!logoMap.has(key))logoMap.set(key,String(x.image||''));
+      }
+    }
+    if(!logoMap.size)return;
+    const current=cache.get('__universe')?.v||baseRows;
+    const enriched=current.map(x=>{
+      const image=logoMap.get(String(x.symbol||'').toUpperCase())||x.image||'';
+      const pair=x.pair;
+      const meta=symbolMeta.get(pair)||{};
+      symbolMeta.set(pair,{...meta,image});
+      return {...x,image};
+    });
+    const t=cache.get('__universe')?.t||Date.now();
+    cache.set('__universe',{t,v:enriched});
+    persistUniverse(enriched,t);
+  }catch{}
+}
+
 async function refreshMarketUniverseFresh(){
   const now=Date.now();
   if(universeInflight)return universeInflight;
   universeInflight=(async()=>{try{
-    // CoinMarketCap is the primary market-data source. Use its public keyless
-    // endpoint so the app can run immediately; a CMC API key can later be
-    // supplied through CMC_API_KEY without changing the frontend.
+    // CoinMarketCap is the primary market-data source. Fetch the full 500-asset
+    // listing in one request so first paint does not wait on multiple pages.
     const base=process.env.CMC_API_KEY
-      ? 'https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest'
-      : 'https://pro-api.coinmarketcap.com/public-api/v1/cryptocurrency/listings/latest';
+      ? 'https://pro-api.coinmarketcap.com/v3/cryptocurrency/listings/latest'
+      : 'https://pro-api.coinmarketcap.com/public-api/v3/cryptocurrency/listings/latest';
     const headers={accept:'application/json'};
     if(process.env.CMC_API_KEY)headers['X-CMC_PRO_API_KEY']=process.env.CMC_API_KEY;
-    const pages=[];
-    for(const start of [1,251]){
-      const u=base+'?start='+start+'&limit=250&convert=USD';
-      const r=await marketFetch(u,{headers,signal:AbortSignal.timeout(10000)});
-      if(!r.ok)throw new Error('coinmarketcap universe');
-      const j=await r.json();
-      if(!Array.isArray(j?.data))throw new Error('coinmarketcap response');
-      pages.push(...j.data);
-    }
-    const market=pages.slice(0,500);
-    // Enrich the CMC market list with real coin logos from CoinGecko.
-    // If the logo feed is unavailable, market data still loads normally.
-    let logoMap=new Map();
-    try{
-      const gr=await marketFetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&sparkline=false',{headers:{accept:'application/json'},signal:AbortSignal.timeout(10000)});
-      if(gr.ok){
-        const gj=await gr.json();
-        if(Array.isArray(gj))for(const x of gj){
-          const key=String(x.symbol||'').toUpperCase();
-          if(key&&!logoMap.has(key))logoMap.set(key,String(x.image||''));
-        }
-      }
-      const gr2=await marketFetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=2&sparkline=false',{headers:{accept:'application/json'},signal:AbortSignal.timeout(10000)});
-      if(gr2.ok){
-        const gj2=await gr2.json();
-        if(Array.isArray(gj2))for(const x of gj2){
-          const key=String(x.symbol||'').toUpperCase();
-          if(key&&!logoMap.has(key))logoMap.set(key,String(x.image||''));
-        }
-      }
-    }catch{}
+    const u=base+'?start=1&limit=500&convert=USD';
+    const r=await marketFetch(u,{headers,signal:AbortSignal.timeout(10000)});
+    if(!r.ok)throw new Error('coinmarketcap universe');
+    const j=await r.json();
+    if(!Array.isArray(j?.data))throw new Error('coinmarketcap response');
+    const market=j.data.slice(0,500);
+    const previous=cache.get('__universe')?.v||[];
+    const previousImages=new Map(previous.map(x=>[String(x.symbol||'').toUpperCase(),String(x.image||'')]));
     const seen=new Set(),v=[];
     for(const c of market){
       const symbol=String(c.symbol||'').toUpperCase();
@@ -183,14 +187,15 @@ async function refreshMarketUniverseFresh(){
       seen.add(pair);
       symbols[pair]=symbol;
       const quote=c.quote?.USD||{};
-      const image=logoMap.get(symbol)||'';
+      const image=previousImages.get(symbol)||'';
       symbolMeta.set(pair,{symbol,coingeckoId:null,marketCap:quote.market_cap||0,marketCapRank:c.cmc_rank||null,name:c.name||symbol,image});
-
       v.push({pair,symbol,name:c.name||symbol,marketCap:quote.market_cap??null,marketCapRank:c.cmc_rank??null,image,change24h:quote.percent_change_24h??null,price:quote.price??null,volume24h:quote.volume_24h??null,circulatingSupply:c.circulating_supply??null,totalSupply:c.total_supply??null,maxSupply:c.max_supply??null,chartable:true,provider:'CoinMarketCap live market feed'});
     }
     if(v.length<100)throw new Error('coinmarketcap insufficient');
     cache.set('__universe',{t:now,v});
     persistUniverse(v,now);
+    // Logos are cosmetic; enrich them after the market payload is already live.
+    enrichUniverseLogosBackground(v).catch(()=>{});
     return v;
   }catch{
     const previous=cache.get('__universe')?.v;
@@ -720,7 +725,10 @@ app.post('/api/ai/screenshot',optionalAuth,aiLimit,async(req,res)=>{
   if(!/^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=]+$/.test(image))return res.status(400).json({error:'invalid_image'});
   if(image.length>11000000)return res.status(413).json({error:'image_too_large'});
   try{
-    const market=await buildChartAiAnalysis(symbol,'1h').catch(()=>null);
+    const market=await Promise.race([
+      getAnalysis(symbol,'1h'),
+      new Promise((_,reject)=>setTimeout(()=>reject(new Error('market_context_timeout')),4500))
+    ]).catch(()=>null);
     if(!process.env.OPENAI_API_KEY)throw Error('not_configured');
     const prompt=(language==='en' ? 'You are CryptoPilot AI, a professional visual crypto-chart analyst. Inspect the ACTUAL uploaded screenshot carefully. Identify only features you can see: price structure, trend, swing highs/lows, support/resistance, breakouts/breakdowns, volume, momentum indicators, moving averages, RSI/MACD if visible, and warning signs. Use the supplied live market context only as secondary context; never replace visual evidence with guesses. Return VALID JSON ONLY with keys summary, points, bullishScenario, bearishScenario, watch. Use 3 to 6 points when the screenshot supports them. x/y are percentages from the left/top of the image and MUST point to the actual relevant location in the uploaded image. Do not invent unreadable numbers. Write clear, fluent English. Explain each point in practical language for a normal user. Never guarantee profit or give personalized financial advice. LIVE CONTEXT: ' : 'You are CryptoPilot AI, a professional visual crypto-chart analyst. Inspect the ACTUAL uploaded screenshot carefully. Identify only features you can see and return VALID JSON ONLY with keys summary, points, bullishScenario, bearishScenario, watch. Write clear, fluent Persian and never guarantee profit or give personalized financial advice. LIVE CONTEXT: ') + JSON.stringify(market||{symbol});
     const models=[process.env.OPENAI_VISION_MODEL||'gpt-4o', 'gpt-4o'].filter((x,i,a)=>x&&!a.slice(0,i).includes(x));
