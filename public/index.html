@@ -157,19 +157,33 @@ function openChart(symbol){location.href=`/crypto-chart.html?symbol=${encodeURIC
 function setLive(ok,txt){document.getElementById('liveText').textContent=txt;document.querySelector('.led').style.background=ok?'var(--green)':'var(--red)';document.querySelector('.led').style.boxShadow=ok?'0 0 13px var(--green)':'0 0 13px var(--red)'}
 async function load(){
  try{
-  const [coins,stats,s]=await Promise.all([api('/api/coins'),api('/api/market-stats').catch(()=>null),api('/api/market-status').catch(()=>null)]);
+  // Render the market table as soon as the primary payload arrives.
+  // Secondary stats/status are deliberately non-blocking.
+  const coins=await api('/api/coins');
   const data=(coins.coins||[]).map(norm);rows=data;filteredRows=data;renderMarkets();
-  if(stats){document.getElementById('marketStatsGrid').innerHTML=[['Market Cap',money(stats.totalMarketCap)],['24h Market Move',percent(stats.averageChange24h)],['24h Volume',money(stats.totalVolume24h)],['BTC Dominance',stats.btcDominance==null?'—':Number(stats.btcDominance).toFixed(2)+'%'],['ETH Dominance',stats.ethDominance==null?'—':Number(stats.ethDominance).toFixed(2)+'%'],['Supply Data',Number(stats.supplyTracked||0)+'/'+Number(stats.pricedAssets||0)+' assets']].map(([a,b])=>'<div class="statusBox"><small>'+a+'</small><strong>'+b+'</strong></div>').join('')}
-  const markets=s?.markets||[];const online=markets.filter(x=>x.online).length;setLive(online>0,online>0?'LIVE':'OFFLINE');
-  const btc=markets.find(x=>x.pair==='BTCUSDT'),eth=markets.find(x=>x.pair==='ETHUSDT');
-  document.getElementById('statusGrid').innerHTML=`<div class="statusBox"><small>Market API</small><strong class="${online?'up':'down'}">${online?'Online':'Offline'}</strong></div><div class="statusBox"><small>BTC</small><strong>${btc?.provider||'—'}</strong></div><div class="statusBox"><small>ETH</small><strong>${eth?.provider||'—'}</strong></div><div class="statusBox"><small>Assets</small><strong>${data.length||0}</strong></div>`;
-  const b=data.find(x=>x.symbol==='BTC');if(b)showDetail(b);
- }catch(err){setLive(false,'OFFLINE');document.getElementById('marketList').innerHTML='<div class="panel">Live market data is temporarily unavailable.</div>';document.getElementById('marketPagination').innerHTML=''}
+  loadStatsAndStatus();
+ }catch(err){
+  setLive(false,'OFFLINE');
+  document.getElementById('marketList').innerHTML='<div class="panel">Live market data is temporarily unavailable.</div>';
+  document.getElementById('marketPagination').innerHTML='';
+ }
+}
+async function loadStatsAndStatus(){
+ const [rs,rm]=await Promise.allSettled([api('/api/market-stats'),api('/api/market-status')]);
+ const stats=rs.status==='fulfilled'?rs.value:null;
+ const s=rm.status==='fulfilled'?rm.value:null;
+ if(stats){
+  document.getElementById('marketStatsGrid').innerHTML=[['Market Cap',money(stats.totalMarketCap)],['24h Market Move',percent(stats.averageChange24h)],['24h Volume',money(stats.totalVolume24h)],['BTC Dominance',stats.btcDominance==null?'—':Number(stats.btcDominance).toFixed(2)+'%'],['ETH Dominance',stats.ethDominance==null?'—':Number(stats.ethDominance).toFixed(2)+'%'],['Supply Data',Number(stats.supplyTracked||0)+'/'+Number(stats.pricedAssets||0)+' assets']].map(([a,b])=>'<div class="statusBox"><small>'+a+'</small><strong>'+b+'</strong></div>').join('');
+ }
+ const markets=s?.markets||[];const online=markets.filter(x=>x.online).length;setLive(online>0,online>0?'LIVE':'OFFLINE');
+ const btc=markets.find(x=>x.pair==='BTCUSDT'),eth=markets.find(x=>x.pair==='ETHUSDT');
+ document.getElementById('statusGrid').innerHTML=`<div class="statusBox"><small>Market API</small><strong class="${online?'up':'down'}">${online?'Online':'Offline'}</strong></div><div class="statusBox"><small>BTC</small><strong>${btc?.provider||'—'}</strong></div><div class="statusBox"><small>ETH</small><strong>${eth?.provider||'—'}</strong></div><div class="statusBox"><small>Assets</small><strong>${rows.length||0}</strong></div>`;
+ const b=rows.find(x=>x.symbol==='BTC');if(b)showDetail(b);
 }
 function showDetail(x){x=norm(x);document.getElementById('selectedPair').textContent=x.symbol+'/USDT';document.getElementById('detailGrid').innerHTML=[['Price',money(x.price)],['RSI',x.rsi?.toFixed?.(1)||'—'],['Bull',x.bullScore??'—'],['Risk',x.riskScore??'—'],['Setup',x.setup||'—']].map(([a,b])=>`<div class="metric"><small>${a}</small><b>${b}</b></div>`).join('')}
 const marketSearch=document.getElementById('marketSearch');marketSearch?.addEventListener('input',e=>{const q=e.target.value.trim().toLowerCase();filteredRows=rows.filter(x=>(names[x.symbol]||x.name||'').toLowerCase().includes(q)||String(x.symbol||'').toLowerCase().includes(q));currentMarketPage=1;renderMarkets()});
 document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>{if(b.dataset.view==='account'){location.href='/auth.html';return;}document.querySelectorAll('[data-view]').forEach(x=>x.classList.remove('active'));document.querySelectorAll(`[data-view="${b.dataset.view}"]`).forEach(x=>x.classList.add('active'));if(b.dataset.view==='markets')document.querySelector('#marketList')?.scrollIntoView({behavior:'smooth'});else window.scrollTo({top:0,behavior:'smooth'})}));
-async function loadAccountGreeting(){try{const r=await fetch('/api/me',{credentials:'same-origin',cache:'no-store'});if(!r.ok)return;const u=(await r.json()).user||{};const name=u.display_name||(u.email||'User').split('@')[0];const box=document.getElementById('authStatus');if(box){box.innerHTML='<span style="color:#9eb0c3">Welcome, '+name+' 👋</span><a href="/account.html" style="color:#64e6ff;text-decoration:none;font-weight:800">Account</a>'}}catch{}}loadAccountGreeting();load();loadDailyIntelligence();setInterval(load,15000);setInterval(loadDailyIntelligence,60000);
+async function loadAccountGreeting(){try{const r=await fetch('/api/me',{credentials:'same-origin',cache:'no-store'});if(!r.ok)return;const u=(await r.json()).user||{};const name=u.display_name||(u.email||'User').split('@')[0];const box=document.getElementById('authStatus');if(box){box.innerHTML='<span style="color:#9eb0c3">Welcome, '+name+' 👋</span><a href="/account.html" style="color:#64e6ff;text-decoration:none;font-weight:800">Account</a>'}}catch{}}loadAccountGreeting();load();loadDailyIntelligence();setInterval(load,30000);setInterval(loadDailyIntelligence,60000);
 async function refreshFreshMarketView(){
  try{
   const [coins,stats]=await Promise.all([api('/api/coins?refresh=1'),api('/api/market-stats?refresh=1')]);
@@ -177,7 +191,7 @@ async function refreshFreshMarketView(){
   if(stats)document.getElementById('marketStatsGrid').innerHTML=[['Market Cap',money(stats.totalMarketCap)],['24h Market Move',percent(stats.averageChange24h)],['24h Volume',money(stats.totalVolume24h)],['BTC Dominance',stats.btcDominance==null?'—':Number(stats.btcDominance).toFixed(2)+'%'],['ETH Dominance',stats.ethDominance==null?'—':Number(stats.ethDominance).toFixed(2)+'%'],['Supply Data',Number(stats.supplyTracked||0)+'/'+Number(stats.pricedAssets||0)+' assets']].map(([a,b])=>'<div class="statusBox"><small>'+a+'</small><strong>'+b+'</strong></div>').join('');
  }catch{}
 }
-setTimeout(refreshFreshMarketView,800);
+
 async function loadDailyIntelligence(){
  try{
   const [rp,rs0,rg]=await Promise.allSettled([api('/api/daily-picks'),api('/api/scanner?tf=1h'),api('/api/top-gainers')]);
