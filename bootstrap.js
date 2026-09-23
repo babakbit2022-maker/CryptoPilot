@@ -43,3 +43,5 @@ await import('./payment-verifier.js');
 
 express.application.response = express.response;
 await import('./payment-wrapper.js');
+const { startTelegramBot } = await import('./telegram-bot.js');
+startTelegramBot();
