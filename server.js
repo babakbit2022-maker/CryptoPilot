@@ -857,85 +857,182 @@ async function computeDailyPicks(){
   if(dailyPickCache.running)return dailyPickCache.data;
   dailyPickCache.running=true;
   try{
-    // Seed from the already-persisted universe before the first await. This makes
-    // the HTTP endpoint immediately usable even during a complete provider outage.
-    const cachedUniverse=[...(cache.get('__universe')?.v||[])].filter(x=>x&&x.symbol&&Number.isFinite(Number(x.change24h)));
-    const seedUniverse=cachedUniverse.length?cachedUniverse:analysisPairsSeed();
-    const seed=[...seedUniverse].sort((a,b)=>Number(b.change24h||0)-Number(a.change24h||0)).slice(0,5).map((x,i)=>({symbol:String(x.symbol).toUpperCase(),pair:x.pair||String(x.symbol).toUpperCase()+'USDT',price:Number.isFinite(Number(x.price))?Number(x.price):null,rank:i+1,score:Math.round(Math.max(50,Math.min(99,50+Math.max(0,Number(x.change24h||0))*2))),confidence:'live-growth',signals:[{tf:'24h',setup:'TOP GROWTH',bull:null,bear:null,rsi:null,volumeRatio:null}]}));
-    if(seed.length>=5){
-      dailyPickCache={t:Date.now(),data:{ok:true,updatedAt:new Date().toISOString(),picks:seed,performance:{available:false,reason:'analysis_refreshing'},disclaimer:'Research-only signals. No pump or profit is guaranteed.'},running:true};
-    }
     await refreshMarketUniverse();
-    const tfs=['15m','1h','4h']; const by=new Map();
-    // Keep the scheduled pick calculation bounded to the core liquid pairs.
-    // The market universe can contain 500 assets, but analyzing all of them here
-    // makes a cold-start request wait on hundreds of external calls.
-    const analysisPairs=['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT','DOGEUSDT','ADAUSDT','AVAXUSDT','LINKUSDT','DOTUSDT','LTCUSDT','TRXUSDT'];
-    // Seed immediately from the live universe so the endpoint can never be held
-    // hostage by a slow external technical-analysis provider.
-    const universeNow=[...(cache.get('__universe')?.v||[])].filter(x=>x&&x.symbol&&Number.isFinite(Number(x.change24h)));
-    await Promise.all(tfs.map(async tf=>{
-      const batch=analysisPairs;
-      await Promise.all(batch.map(async pair=>{
-        try{
-          const j=await getAnalysis(pair,tf),a=j.analysis;if(!a||!Number.isFinite(a.price))return;
-          const old=by.get(j.symbol)||{symbol:j.symbol,pair,price:a.price,score:0,tfCount:0,signals:[]};
-          const bull=Number(a.bullScore||0);
-          const bear=Number(a.bearScore||0);
-          const directional=Math.max(-50,Math.min(50,bull-bear));
-          const momentum=Math.max(-1,Math.min(1,Number(a.momentum||0)));
-          const volume=Math.max(0,Math.min(2,Number(a.volumeRatio||0)-1));
-          const trend=(Number(a.ema20||0)>Number(a.ema50||0)?1:-1)+(Number(a.ema50||0)>Number(a.ema200||0)?1:-1);
-          const rsi=Number(a.rsi);
-          const rsiQuality=Number.isFinite(rsi)?(rsi>=45&&rsi<=68?4:(rsi>75?-7:rsi<30?-4:0)):0;
-          old.score+=(directional*.72)+(Math.max(0,momentum)*20)+(volume*8)+(trend*5)+rsiQuality;
-          old.tfCount++;old.price=a.price;
-          old.signals.push({tf,bull:a.bullScore,bear:a.bearScore,rsi:a.rsi,volumeRatio:a.volumeRatio,setup:a.setup,support:a.support,resistance:a.resistance,atr:a.atr,tradeLevels:a.tradeLevels});
-          by.set(j.symbol,old);
-        }catch{}
+    const universe=[...(cache.get('__universe')?.v||[])].filter(x=>
+      x&&x.symbol&&x.pair&&Number.isFinite(Number(x.price))&&Number(x.price)>0&&
+      Number.isFinite(Number(x.change24h))&&Number.isFinite(Number(x.volume24h))&&Number(x.volume24h)>0
+    );
+
+    // Daily AI Picks are deliberately NOT the "Highest Growth Now" list.
+    // First remove the strongest current gainers, then search the remaining
+    // universe for early/pre-breakout setups that have not already moved hard.
+    const byGrowth=[...universe].sort((a,b)=>Number(b.change24h)-Number(a.change24h));
+    const excludedGrowthSymbols=new Set(
+      byGrowth.slice(0,20).map(x=>String(x.symbol).toUpperCase())
+    );
+
+    // Keep the candidate pool liquid enough for reliable technical data, while
+    // avoiding coins that have already made a large 24h move.
+    let candidates=universe.filter(x=>{
+      const ch=Number(x.change24h);
+      const vol=Number(x.volume24h);
+      const cap=Number(x.marketCap||0);
+      if(excludedGrowthSymbols.has(String(x.symbol).toUpperCase()))return false;
+      if(ch>8 || ch<-12)return false;
+      if(vol<1000000)return false;
+      if(cap>0 && vol/cap<0.002)return false;
+      return true;
+    });
+
+    // Pre-rank before technical analysis: prefer modest recent movement,
+    // healthy liquidity and enough participation to make a breakout meaningful.
+    candidates.sort((a,b)=>{
+      const score=x=>{
+        const ch=Number(x.change24h);
+        const early=ch>=0?Math.max(0,10-Math.abs(ch-2)*1.4):Math.max(0,6-Math.abs(ch)*0.35);
+        const vol=Number(x.volume24h||0),cap=Number(x.marketCap||0);
+        const liq=cap>0?Math.min(8,(vol/cap)*100):0;
+        const rank=Number(x.marketCapRank||500);
+        const quality=Math.max(0,5-Math.max(0,rank-150)/100);
+        return early+liq+quality;
+      };
+      return score(b)-score(a);
+    });
+
+    // Analyze a broad, but bounded, pool. This is intentionally much broader
+    // than the old 12-coin core list so smaller early movers can be discovered.
+    candidates=candidates.slice(0,36);
+
+    const by=new Map();
+    const tfs=['1h','4h'];
+    const analyzeOne=async(pair,tf)=>{
+      try{
+        const j=await getAnalysis(pair,tf),a=j.analysis;
+        if(!a||!Number.isFinite(Number(a.price)))return;
+        const symbol=String(j.symbol||pair.replace(/USDT$/,'')).toUpperCase();
+        const ch=Number(universe.find(x=>String(x.symbol).toUpperCase()===symbol)?.change24h||0);
+        const old=by.get(symbol)||{symbol,pair,price:Number(a.price),score:0,tfCount:0,signals:[],change24h:ch};
+        const bull=Number(a.bullScore||0);
+        const bear=Number(a.bearScore||0);
+        const directional=Math.max(-50,Math.min(50,bull-bear));
+        const momentum=Number(a.momentum||0);
+        const volumeRatio=Number(a.volumeRatio||1);
+        const trend=(Number(a.ema20||0)>Number(a.ema50||0)?1:-1)+(Number(a.ema50||0)>Number(a.ema200||0)?1:-1);
+        const rsi=Number(a.rsi);
+        const rsiQuality=Number.isFinite(rsi)?(rsi>=45&&rsi<=68?8:(rsi>75?-12:rsi<35?-6:2)):0;
+        const resistance=Number(a.resistance);
+        const price=Number(a.price);
+        const atr=Number(a.atr);
+        const resistanceDistance=Number.isFinite(resistance)&&resistance>price&&price>0
+          ?((resistance-price)/price)*100:null;
+        // Early-move bonus: reward improving momentum before a large price jump,
+        // and penalize coins that are already extended.
+        const earlyMove=ch<=5?8:Math.max(-18,8-(ch-5)*4);
+        const volumeSignal=volumeRatio>=1.15?Math.min(16,(volumeRatio-1)*18):Math.max(-4,(volumeRatio-1)*8);
+        const compression=Number.isFinite(atr)&&price>0
+          ?Math.max(-4,Math.min(8,7-(atr/price*100)*1.2)):0;
+        const resistanceScore=resistanceDistance===null?0:
+          resistanceDistance>=1&&resistanceDistance<=8?10:
+          resistanceDistance>8&&resistanceDistance<=15?4:
+          resistanceDistance<1?-5:-2;
+        old.score += directional*0.55 + Math.max(0,momentum)*12 + volumeSignal +
+          trend*4 + rsiQuality + earlyMove + compression + resistanceScore;
+        old.tfCount++;
+        old.price=price;
+        old.signals.push({
+          tf,bull:a.bullScore,bear:a.bearScore,rsi:a.rsi,volumeRatio:a.volumeRatio,
+          momentum:a.momentum,setup:a.setup,support:a.support,resistance:a.resistance,
+          atr:a.atr,tradeLevels:a.tradeLevels,resistanceDistance
+        });
+        by.set(symbol,old);
+      }catch{}
+    };
+
+    // Small batches reduce provider throttling while still scanning many assets.
+    for(const tf of tfs){
+      for(let i=0;i<candidates.length;i+=6){
+        const batch=candidates.slice(i,i+6);
+        await Promise.all(batch.map(x=>analyzeOne(x.pair,tf)));
+      }
+    }
+
+    let analyzed=[...by.values()]
+      .filter(x=>x.tfCount>=2)
+      .filter(x=>!excludedGrowthSymbols.has(x.symbol))
+      .filter(x=>Number(x.change24h)<=8)
+      .sort((a,b)=>b.score-a.score)
+      .slice(0,5)
+      .map((x,i)=>({
+        ...x,
+        rank:i+1,
+        score:Math.round(Math.max(1,Math.min(99,50+x.score/(x.tfCount*2)))),
+        confidence:x.tfCount>=2?'multi-timeframe-pre-breakout':'early-setup'
       }));
-    }));
-    const analyzed=[...by.values()].filter(x=>x.tfCount>=2).sort((a,b)=>b.score-a.score).slice(0,5).map((x,i)=>({...x,rank:i+1,score:Math.round(Math.min(99,x.score/x.tfCount)),confidence:x.tfCount>=3?'multi-timeframe':'multi-signal'}));
-    const picks=analyzed.length?analyzed.slice(0,5):[];
+
+    // If fewer than five qualify, fill only from the non-gainer candidate pool.
+    // Never fall back to Highest Growth Now coins.
+    if(analyzed.length<5){
+      const existing=new Set(analyzed.map(x=>x.symbol));
+      for(const x of candidates){
+        if(analyzed.length>=5)break;
+        const symbol=String(x.symbol).toUpperCase();
+        if(existing.has(symbol)||excludedGrowthSymbols.has(symbol))continue;
+        analyzed.push({
+          symbol,
+          pair:x.pair,
+          price:Number(x.price)||null,
+          rank:analyzed.length+1,
+          score:Math.round(Math.max(1,Math.min(99,52-Number(x.change24h||0)*1.5))),
+          confidence:'early-setup-candidate',
+          change24h:Number(x.change24h),
+          signals:[{tf:'24h',setup:'EARLY_SETUP_CANDIDATE',bull:null,bear:null,rsi:null,volumeRatio:null}],
+          entryGuidance:{
+            zoneLow:Number(x.price)||null,
+            zoneHigh:Number(x.price)||null,
+            mode:'EARLY_SETUP_REFERENCE',
+            timeframe:'1h'
+          },
+          pickTime:new Date().toISOString()
+        });
+        existing.add(symbol);
+      }
+    }
+
+    const picks=analyzed.slice(0,5);
     for(const x of picks){
       const preferred=x.signals.find(s=>s.tf==='1h')||x.signals.find(s=>s.tf==='4h')||x.signals[0];
       const cur=Number(x.price),support=Number(preferred?.support),atr=Number(preferred?.atr);
       const base=Number.isFinite(support)&&support>0?support:cur;
       const upper=Number.isFinite(atr)&&atr>0?Math.min(cur,base+atr*0.5):cur;
-      x.entryGuidance={zoneLow:Number.isFinite(base)?base:null,zoneHigh:Number.isFinite(upper)?upper:null,mode:String(preferred?.setup||'NEUTRAL'),timeframe:preferred?.tf||'1h'};
+      x.entryGuidance={
+        zoneLow:Number.isFinite(base)?base:null,
+        zoneHigh:Number.isFinite(upper)?upper:null,
+        mode:String(preferred?.setup||'EARLY_PRE_BREAKOUT'),
+        timeframe:preferred?.tf||'1h'
+      };
       x.pickTime=new Date().toISOString();
     }
-    for(const x of seed){if(picks.length>=5)break;if(!picks.some(p=>p.symbol===x.symbol))picks.push({...x,rank:picks.length+1});}
-    // If analysis produced fewer than five, fill from the live universe while
-    // preserving any analyzed picks already selected.
-    const existing=new Set(picks.map(x=>x.symbol));
-    // Always keep the Daily AI Picks panel populated with exactly five candidates.
-    // If multi-timeframe analysis is temporarily rate-limited/unavailable, fall back
-    // to the live market universe's strongest 24h movers rather than returning zero picks.
-    if(picks.length<5){
-      const fallback=[...(cache.get('__universe')?.v||[])]
-        .filter(x=>x&&x.symbol&&!existing.has(x.symbol)&&Number.isFinite(Number(x.change24h)))
-        .sort((a,b)=>Number(b.change24h)-Number(a.change24h))
-        .slice(0,5-picks.length)
-        .map((x,i)=>({
-          symbol:String(x.symbol).toUpperCase(),
-          pair:x.pair||String(x.symbol).toUpperCase()+'USDT',
-          price:Number(x.price)||null,
-          rank:picks.length+i+1,
-          score:Math.round(Math.max(50,Math.min(99,50+Math.max(0,Number(x.change24h))*2))),
-          confidence:'live-growth',
-          signals:[{tf:'24h',setup:'TOP GROWTH',bull:x.bullScore,bear:x.bearScore,rsi:x.rsi,volumeRatio:x.volumeRatio}],
-          entryGuidance:{zoneLow:Number(x.price)||null,zoneHigh:Number(x.price)||null,mode:'LIVE_GROWTH_REFERENCE',timeframe:'24h'},
-          pickTime:new Date().toISOString()
-        }));
-      picks.push(...fallback);
-    }
+
     const publishedAt=new Date().toISOString();
     for(const x of picks)if(!x.pickTime)x.pickTime=publishedAt;
+    if(!picks.length)throw Error('no_early_candidates');
+
     const runId=await recordDailyPickRun(picks);
     recordDailyPickSnapshots(runId,picks);
     const performance=await getDailyPerformance(1);
-    dailyPickCache={t:Date.now(),data:{ok:true,updatedAt:new Date().toISOString(),picks,performance,disclaimer:'Research-only signals. No pump or profit is guaranteed.'},running:false};
+    dailyPickCache={
+      t:Date.now(),
+      data:{
+        ok:true,
+        updatedAt:new Date().toISOString(),
+        picks,
+        performance,
+        strategy:'EARLY_PRE_BREAKOUT',
+        excludedFromHighestGrowth:true,
+        disclaimer:'Research-only signals. These picks target early/pre-breakout setups and do not guarantee growth or profit.'
+      },
+      running:false
+    };
     return dailyPickCache.data;
   }catch{
     dailyPickCache.running=false;
