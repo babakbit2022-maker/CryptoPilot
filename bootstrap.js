@@ -38,28 +38,6 @@ express.static = function(...args){
   };
 };
 
-// Screenshot AI has three free analyses per account. The existing server route is premium-gated,
-// so this wrapper temporarily grants the route's premium check only after auth and only while
-// the user still has free credits. Premium users remain unlimited.
-const screenshotUsage = new Map();
-express.application.post = function patchedPost(path,...handlers){
-  if(path === '/api/ai/screenshot'){
-    const gate = (req,res,next)=>{
-      const userId=req.user?.id;
-      if(!userId)return res.status(401).json({error:'unauthorized'});
-      if(req.user?.plan==='premium')return next();
-      const key=String(userId);
-      const used=Number(screenshotUsage.get(key)||0);
-      if(used>=3)return res.status(403).json({error:'premium_required',reason:'free_limit_reached'});
-      screenshotUsage.set(key,used+1);
-      req.user.plan='premium';
-      next();
-    };
-    return originalPost.call(this,path,gate,...handlers);
-  }
-  return originalPost.call(this,path,...handlers);
-};
-
 // Install the verifier before payment-wrapper. payment-wrapper will call this patched listener as its final listen layer.
 await import('./payment-verifier.js');
 
