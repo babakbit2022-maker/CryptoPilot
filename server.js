@@ -890,13 +890,21 @@ async function computeDailyPicks(){
           const rsiQuality=Number.isFinite(rsi)?(rsi>=45&&rsi<=68?4:(rsi>75?-7:rsi<30?-4:0)):0;
           old.score+=(directional*.72)+(Math.max(0,momentum)*20)+(volume*8)+(trend*5)+rsiQuality;
           old.tfCount++;old.price=a.price;
-          old.signals.push({tf,bull:a.bullScore,bear:a.bearScore,rsi:a.rsi,volumeRatio:a.volumeRatio,setup:a.setup});
+          old.signals.push({tf,bull:a.bullScore,bear:a.bearScore,rsi:a.rsi,volumeRatio:a.volumeRatio,setup:a.setup,support:a.support,resistance:a.resistance,atr:a.atr,tradeLevels:a.tradeLevels});
           by.set(j.symbol,old);
         }catch{}
       }));
     }));
     const analyzed=[...by.values()].filter(x=>x.tfCount>=2).sort((a,b)=>b.score-a.score).slice(0,5).map((x,i)=>({...x,rank:i+1,score:Math.round(Math.min(99,x.score/x.tfCount)),confidence:x.tfCount>=3?'multi-timeframe':'multi-signal'}));
     const picks=analyzed.length?analyzed.slice(0,5):[];
+    for(const x of picks){
+      const preferred=x.signals.find(s=>s.tf==='1h')||x.signals.find(s=>s.tf==='4h')||x.signals[0];
+      const cur=Number(x.price),support=Number(preferred?.support),atr=Number(preferred?.atr);
+      const base=Number.isFinite(support)&&support>0?support:cur;
+      const upper=Number.isFinite(atr)&&atr>0?Math.min(cur,base+atr*0.5):cur;
+      x.entryGuidance={zoneLow:Number.isFinite(base)?base:null,zoneHigh:Number.isFinite(upper)?upper:null,mode:String(preferred?.setup||'NEUTRAL'),timeframe:preferred?.tf||'1h'};
+      x.pickTime=new Date().toISOString();
+    }
     for(const x of seed){if(picks.length>=5)break;if(!picks.some(p=>p.symbol===x.symbol))picks.push({...x,rank:picks.length+1});}
     // If analysis produced fewer than five, fill from the live universe while
     // preserving any analyzed picks already selected.
@@ -916,10 +924,14 @@ async function computeDailyPicks(){
           rank:picks.length+i+1,
           score:Math.round(Math.max(50,Math.min(99,50+Math.max(0,Number(x.change24h))*2))),
           confidence:'live-growth',
-          signals:[{tf:'24h',setup:'TOP GROWTH',bull:x.bullScore,bear:x.bearScore,rsi:x.rsi,volumeRatio:x.volumeRatio}]
+          signals:[{tf:'24h',setup:'TOP GROWTH',bull:x.bullScore,bear:x.bearScore,rsi:x.rsi,volumeRatio:x.volumeRatio}],
+          entryGuidance:{zoneLow:Number(x.price)||null,zoneHigh:Number(x.price)||null,mode:'LIVE_GROWTH_REFERENCE',timeframe:'24h'},
+          pickTime:new Date().toISOString()
         }));
       picks.push(...fallback);
     }
+    const publishedAt=new Date().toISOString();
+    for(const x of picks)if(!x.pickTime)x.pickTime=publishedAt;
     const runId=await recordDailyPickRun(picks);
     recordDailyPickSnapshots(runId,picks);
     const performance=await getDailyPerformance(1);
