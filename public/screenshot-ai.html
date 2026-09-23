@@ -1,1 +1,124 @@
-<!doctype html><html lang="en" dir="ltr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CryptoPilot AI — Screenshot Analysis</title><style>body{margin:0;background:#06101c;color:#f5f8fc;font:14px system-ui;padding:20px}.wrap{max-width:900px;margin:auto}.panel{background:#0b1726;border:1px solid #1d3148;border-radius:18px;padding:20px}.btn{background:linear-gradient(135deg,#2eaddb,#6d62df);color:#fff;border:0;border-radius:10px;padding:11px 15px;font-weight:800}.back{color:#64e6ff;text-decoration:none}.muted{color:#8194aa;font-size:11px;line-height:1.7}textarea{width:100%;min-height:260px;background:#081624;color:#fff;border:1px solid #1d3148;border-radius:12px;padding:12px;box-sizing:border-box;white-space:pre-wrap}.result{margin-top:14px;background:#081624;border:1px solid #182d43;border-radius:12px;padding:14px;line-height:1.9;white-space:pre-wrap}input,select{margin:10px 0;background:#081624;color:#fff;border:1px solid #1d3148;border-radius:10px;padding:10px;width:100%;box-sizing:border-box}</style></head><body><div class="wrap"><div style="margin-bottom:14px"><a class="back" href="/">← Dashboard</a></div><div class="panel"><h2 style="margin-top:0">📸 AI Chart Screenshot Analysis</h2><p class="muted">Upload a chart screenshot. CryptoPilot AI combines the image with live market data for the selected asset and explains trend, structure, RSI/EMA/volume, support and resistance, and possible scenarios.</p><select id="symbol"><option value="BTCUSDT">BTC/USDT</option></select><input id="file" type="file" accept="image/png,image/jpeg,image/webp"><button class="btn" id="go">Analyze Screenshot</button><div id="out" class="result" style="display:none"></div></div></div><script>const out=document.getElementById('out');document.getElementById('go').onclick=async()=>{const f=document.getElementById('file').files[0];if(!f){out.style.display='block';out.textContent='Please select an image first.';return}if(f.size>8*1024*1024){out.style.display='block';out.textContent='Image size must be under 8 MB.';return}out.style.display='block';out.textContent='Analyzing the image and live market data…';const data=await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(f)});try{const r=await fetch('/api/ai/screenshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:document.getElementById('symbol').value,image:data,language:'en'})});const j=await r.json();if(!r.ok||!j.ok)throw Error(j.error||'error');out.textContent=j.answer+'\n\nAnalysis time: '+new Date(j.asOf).toLocaleString('en-US')}catch{out.textContent='Screenshot analysis is temporarily unavailable. Please try again later.'}};</script></body></html>
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CryptoPilot AI — Screenshot Analysis</title>
+<style>
+:root{--bg:#06101c;--panel:#0b1726;--panel2:#081624;--line:#1d3148;--text:#f5f8fc;--muted:#8194aa;--cyan:#64e6ff;--green:#35d69b;--red:#ff6378;--yellow:#f5c85b}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(900px 500px at 10% -10%,#123653 0,transparent 60%),var(--bg);color:var(--text);font:14px/1.6 system-ui,-apple-system,Segoe UI,sans-serif;padding:20px}.wrap{max-width:1050px;margin:auto}.panel{background:rgba(11,23,38,.94);border:1px solid var(--line);border-radius:20px;padding:20px;box-shadow:0 18px 60px rgba(0,0,0,.25)}.back{color:var(--cyan);text-decoration:none}.muted{color:var(--muted);font-size:11px}.toolbar{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 0}select,input,button{font:inherit}select,input[type=file]{width:100%;background:var(--panel2);color:#fff;border:1px solid var(--line);border-radius:11px;padding:11px}.btn{background:linear-gradient(135deg,#2eaddb,#6d62df);color:#fff;border:0;border-radius:11px;padding:11px 16px;font-weight:800;cursor:pointer}.btn:disabled{opacity:.5;cursor:not-allowed}.assetWrap{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:16px;background:#071320;min-height:260px;display:grid;place-items:center}.assetWrap img{display:block;max-width:100%;max-height:620px;width:auto;height:auto}.marker{position:absolute;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:#ff6378;color:#fff;border:2px solid #fff;font-size:11px;font-weight:900;transform:translate(-50%,-50%);box-shadow:0 5px 18px rgba(0,0,0,.4)}.result{margin-top:14px;background:var(--panel2);border:1px solid #182d43;border-radius:14px;padding:16px;line-height:1.9;white-space:pre-wrap}.points{display:grid;gap:9px;margin-top:12px}.point{border:1px solid #1b3047;background:#0a1929;border-radius:12px;padding:11px}.point b{display:block}.scenario{border:1px solid #1b3047;background:#0a1929;border-radius:12px;padding:12px;margin-top:10px}.scenario.green{border-color:#245b49}.scenario.red{border-color:#5d2934}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.search{margin-top:8px}.status{margin-top:10px;font-size:11px;color:var(--muted)}@media(max-width:700px){.toolbar,.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div style="margin-bottom:14px"><a class="back" href="/">← Dashboard</a></div>
+<div class="panel">
+<h2 style="margin:0">📸 AI Chart Screenshot Analysis</h2>
+<p class="muted">انتخاب ارز از بین ۵۰۰ ارز بازار، آپلود اسکرین‌شات و تحلیل واقعی خود تصویر با نقاط مشخص روی چارت.</p>
+
+<div class="toolbar">
+  <div>
+    <label class="muted">Asset</label>
+    <input id="assetSearch" class="search" placeholder="Search coin name or symbol…">
+    <select id="symbol" size="1"><option value="BTCUSDT">BTC / USDT — Bitcoin</option></select>
+    <div id="assetStatus" class="status">Loading the full market list…</div>
+  </div>
+  <div>
+    <label class="muted">Chart screenshot</label>
+    <input id="file" type="file" accept="image/png,image/jpeg,image/webp">
+    <div id="fileStatus" class="status">PNG, JPG or WEBP · maximum 8 MB</div>
+  </div>
+</div>
+
+<button class="btn" id="go">Analyze Screenshot</button>
+<div id="out" class="result" style="display:none"></div>
+
+<div id="visual" class="assetWrap" style="display:none;margin-top:14px">
+  <img id="preview" alt="Uploaded chart">
+  <div id="markers"></div>
+</div>
+<div id="details" style="display:none"></div>
+</div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const out=$('out'),select=$('symbol'),search=$('assetSearch'),status=$('assetStatus');
+let assets=[],selected=null;
+
+function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+
+async function loadAssets(){
+  try{
+    const r=await fetch('/api/screenshot-assets',{cache:'no-store',credentials:'same-origin'});
+    const j=await r.json();
+    if(!r.ok||!j.ok)throw Error(j.error||'assets');
+    assets=Array.isArray(j.coins)?j.coins:[];
+    renderAssets('');
+    status.textContent=assets.length+' assets loaded · Top 500 market-cap universe';
+  }catch(e){
+    status.textContent='Could not load the market list. Refresh and try again.';
+  }
+}
+function renderAssets(q){
+  const query=String(q||'').trim().toLowerCase();
+  const list=assets.filter(x=>String(x.symbol||'').toLowerCase().includes(query)||String(x.name||'').toLowerCase().includes(query)).slice(0,500);
+  const current=select.value;
+  select.innerHTML=list.map(x=>'<option value="'+esc(x.pair)+'">'+esc(x.symbol)+' / USDT — '+esc(x.name)+'</option>').join('');
+  if(current&&list.some(x=>x.pair===current))select.value=current;
+  if(!select.value&&list[0])select.value=list[0].pair;
+  selected=assets.find(x=>x.pair===select.value)||list[0]||null;
+  status.textContent=(list.length||0)+' matching assets · Select any available coin';
+}
+search.addEventListener('input',e=>renderAssets(e.target.value));
+select.addEventListener('change',()=>{selected=assets.find(x=>x.pair===select.value)||null});
+
+$('file').addEventListener('change',()=>{
+  const f=$('file').files[0];
+  $('fileStatus').textContent=f?f.name+' · '+(f.size/1024/1024).toFixed(2)+' MB':'PNG, JPG or WEBP · maximum 8 MB';
+  if(!f)return;
+  const url=URL.createObjectURL(f);
+  $('preview').src=url;
+  $('visual').style.display='grid';
+  $('markers').innerHTML='';
+});
+
+function showAnalysis(a){
+  const points=Array.isArray(a.points)?a.points:[];
+  $('markers').innerHTML=points.map((p,i)=>{
+    const x=Math.max(0,Math.min(100,Number(p.x)||50)),y=Math.max(0,Math.min(100,Number(p.y)||50));
+    return '<div class="marker" style="left:'+x+'%;top:'+y+'%" title="'+esc(p.title||'Point '+(i+1))+'">'+(i+1)+'</div>';
+  }).join('');
+  $('details').style.display='block';
+  $('details').innerHTML='<div class="points">'+points.map((p,i)=>'<div class="point"><b>#'+(i+1)+' · '+esc(p.title||'Important chart point')+'</b><div>'+esc(p.explanation||'')+'</div><div class="muted">'+esc(p.lesson||'')+'</div></div>').join('')+'</div>'+
+    '<div class="grid2"><div class="scenario green"><b>🟢 Bullish scenario</b><div>'+esc(a.bullishScenario||'Not enough visual evidence for a bullish scenario.')+'</div></div><div class="scenario red"><b>🔴 Bearish scenario</b><div>'+esc(a.bearishScenario||'Not enough visual evidence for a bearish scenario.')+'</div></div></div>'+
+    '<div class="scenario"><b>👀 What to watch</b><div>'+esc(a.watch||'Watch the marked levels and confirmation on the next candles.')+'</div></div>';
+}
+
+$('go').onclick=async()=>{
+  const f=$('file').files[0];
+  const symbol=select.value||'BTCUSDT';
+  if(!f){out.style.display='block';out.textContent='Please select a chart screenshot first.';return}
+  if(f.size>8*1024*1024){out.style.display='block';out.textContent='Image size must be under 8 MB.';return}
+  out.style.display='block';$('details').style.display='none';$('markers').innerHTML='';
+  out.textContent='Analyzing the actual image and live market context…';
+  $('go').disabled=true;
+  try{
+    const data=await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(f)});
+    const r=await fetch('/api/ai/screenshot',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({symbol,image:data,language:'en'})});
+    const j=await r.json();
+    if(!r.ok||!j.ok){
+      if(j.error==='premium_required'||j.error==='premium_expired')throw Error('Premium is required for Screenshot AI. Your free analysis limit may have been reached.');
+      if(j.error==='unauthorized')throw Error('Please sign in to use Screenshot AI.');
+      throw Error(j.detail||j.error||'Screenshot analysis failed');
+    }
+    const a=j.analysis||{};
+    out.textContent=(a.summary||'Analysis completed.')+'\n\nAnalysis time: '+new Date(j.asOf||Date.now()).toLocaleString();
+    showAnalysis(a);
+  }catch(e){
+    out.textContent=String(e.message||e);
+  }finally{$('go').disabled=false}
+};
+loadAssets();
+</script>
+</body>
+</html>
