@@ -749,6 +749,23 @@ app.post('/api/ai/screenshot',optionalAuth,aiLimit,async(req,res)=>{
 });
 
 let dailyPickCache={t:0,data:null,running:false};
+let dailyPickLiveCache={t:0,data:null};
+
+async function enrichDailyPicksLive(picks){
+  const now=Date.now();
+  if(dailyPickLiveCache.data&&now-dailyPickLiveCache.t<30000)return dailyPickLiveCache.data;
+  const universe=[...(cache.get('__universe')?.v||[])];
+  const out=[];
+  for(const pick of (Array.isArray(picks)?picks:[])){
+    let current=Number(universe.find(x=>String(x.symbol||'').toUpperCase()===String(pick.symbol||'').toUpperCase())?.price);
+    if(!Number.isFinite(current)||current<=0)current=await getCurrentPrice(pick.symbol);
+    const entry=Number(pick.price);
+    const liveChange=Number.isFinite(entry)&&entry>0&&Number.isFinite(current)&&current>0?((current-entry)/entry)*100:null;
+    out.push({...pick,currentPrice:Number.isFinite(current)&&current>0?current:null,currentChangePct:Number.isFinite(liveChange)?liveChange:null});
+  }
+  dailyPickLiveCache={t:now,data:out};
+  return out;
+}
 
 function analysisPairsSeed(){
   return ['BTC','ETH','SOL','BNB','XRP'].map((symbol,i)=>({symbol,pair:symbol+'USDT',name:symbol,change24h:0,price:null,marketCapRank:i+1}));
@@ -863,11 +880,15 @@ async function computeDailyPicks(){
         try{
           const j=await getAnalysis(pair,tf),a=j.analysis;if(!a||!Number.isFinite(a.price))return;
           const old=by.get(j.symbol)||{symbol:j.symbol,pair,price:a.price,score:0,tfCount:0,signals:[]};
-          const directional=Math.max(Number(a.bullScore||0),Number(a.bearScore||0));
+          const bull=Number(a.bullScore||0);
+          const bear=Number(a.bearScore||0);
+          const directional=Math.max(-50,Math.min(50,bull-bear));
           const momentum=Math.max(-1,Math.min(1,Number(a.momentum||0)));
           const volume=Math.max(0,Math.min(2,Number(a.volumeRatio||0)-1));
           const trend=(Number(a.ema20||0)>Number(a.ema50||0)?1:-1)+(Number(a.ema50||0)>Number(a.ema200||0)?1:-1);
-          old.score+=(directional*.55)+(Math.max(0,momentum)*18)+(volume*8)+(trend*4);
+          const rsi=Number(a.rsi);
+          const rsiQuality=Number.isFinite(rsi)?(rsi>=45&&rsi<=68?4:(rsi>75?-7:rsi<30?-4:0)):0;
+          old.score+=(directional*.72)+(Math.max(0,momentum)*20)+(volume*8)+(trend*5)+rsiQuality;
           old.tfCount++;old.price=a.price;
           old.signals.push({tf,bull:a.bullScore,bear:a.bearScore,rsi:a.rsi,volumeRatio:a.volumeRatio,setup:a.setup});
           by.set(j.symbol,old);
@@ -916,12 +937,16 @@ app.get('/api/daily-picks',optionalAuth,async(req,res)=>{
   if(!dailyPickCache.data)return res.status(503).json({error:'daily_picks_unavailable'});
   const d=dailyPickCache.data;
   const isPremium=req.user?.plan==='premium';
+  const livePicks=await enrichDailyPicksLive(d.picks);
+  const freePick=livePicks[0]||null;
   res.json({
     ok:true,updatedAt:d.updatedAt,
     premium:isPremium,
-    picks:isPremium?d.picks:d.picks.map(x=>({rank:x.rank,confidence:x.confidence,score:x.score,locked:true})),
+    freePick:freePick?{...freePick,locked:false}:null,
+    picks:isPremium?livePicks:livePicks.map((x,i)=>i===0?{...x,locked:false}:{rank:x.rank,confidence:x.confidence,score:x.score,locked:true}),
     performance:isPremium?d.performance:{available:false,reason:'premium_required'},
-    disclaimer:d.disclaimer
+    disclaimer:d.disclaimer,
+    liveReturnBasis:'Current price change from the price recorded when today’s pick was published. Fees, slippage and execution costs are excluded.'
   });
 });
 app.get('/api/daily-picks/history',auth,premium,async(req,res)=>{
