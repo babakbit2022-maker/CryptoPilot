@@ -1042,7 +1042,13 @@ async function computeDailyPicks(){
 
 app.get('/api/daily-picks',optionalAuth,async(req,res)=>{
   const fresh=dailyPickCache.data&&Date.now()-dailyPickCache.t<5*60*1000;
-  if(!fresh && !dailyPickCache.running)computeDailyPicks().catch(()=>{});
+  if(!fresh){
+    try{
+      // Wait for the first calculation instead of returning a transient 503
+      // while the early/pre-breakout scanner is warming up after a deploy.
+      await computeDailyPicks();
+    }catch{}
+  }
   if(!dailyPickCache.data)return res.status(503).json({error:'daily_picks_unavailable'});
   const d=dailyPickCache.data;
   const isPremium=req.user?.plan==='premium';
