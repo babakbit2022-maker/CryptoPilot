@@ -712,7 +712,7 @@ app.get('/api/screenshot-assets',optionalAuth,apiLimit,async(req,res)=>{
   }
 });
 
-app.post('/api/ai/screenshot',auth,aiLimit,premium,async(req,res)=>{
+app.post('/api/ai/screenshot',optionalAuth,aiLimit,async(req,res)=>{
   const symbol=String(req.body?.symbol||'BTCUSDT').toUpperCase();
   const image=String(req.body?.image||'');
   const language=(()=>{const x=String(req.body?.language||readCookie(req,'cp_language')||'fa').toLowerCase();return x==='en'||x==='ru'?x:'fa';})();
