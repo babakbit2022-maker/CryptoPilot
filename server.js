@@ -1040,14 +1040,43 @@ async function computeDailyPicks(){
   }
 }
 
+function seedDailyPickFallback(){
+  if(dailyPickCache.data)return dailyPickCache.data;
+  const universe=[...(cache.get('__universe')?.v||[])].filter(x=>
+    x&&x.symbol&&x.pair&&Number.isFinite(Number(x.price))&&Number(x.price)>0&&
+    Number.isFinite(Number(x.change24h))&&Number.isFinite(Number(x.volume24h))&&Number(x.volume24h)>0
+  );
+  const byGrowth=[...universe].sort((a,b)=>Number(b.change24h)-Number(a.change24h));
+  const excluded=new Set(byGrowth.slice(0,20).map(x=>String(x.symbol).toUpperCase()));
+  const candidates=universe.filter(x=>{
+    const s=String(x.symbol).toUpperCase(),ch=Number(x.change24h),vol=Number(x.volume24h),cap=Number(x.marketCap||0);
+    return !excluded.has(s)&&ch<=8&&ch>=-12&&vol>=1000000&&(!cap||vol/cap>=0.002);
+  }).sort((a,b)=>Math.abs(Number(a.change24h)-2)-Math.abs(Number(b.change24h)-2));
+  const picks=candidates.slice(0,5).map((x,i)=>({
+    symbol:String(x.symbol).toUpperCase(),pair:x.pair,price:Number(x.price),rank:i+1,
+    score:Math.max(1,Math.min(99,Math.round(55-Number(x.change24h)*1.5))),
+    confidence:'early-setup-candidate',change24h:Number(x.change24h),
+    signals:[{tf:'24h',setup:'EARLY_SETUP_CANDIDATE',bull:null,bear:null,rsi:null,volumeRatio:null}],
+    entryGuidance:{zoneLow:Number(x.price),zoneHigh:Number(x.price),mode:'EARLY_SETUP_REFERENCE',timeframe:'1h'},
+    pickTime:new Date().toISOString()
+  }));
+  if(!picks.length)return null;
+  dailyPickCache={t:Date.now(),data:{
+    ok:true,updatedAt:new Date().toISOString(),picks,performance:{available:false,reason:'history_not_collected'},
+    strategy:'EARLY_PRE_BREAKOUT',excludedFromHighestGrowth:true,
+    disclaimer:'Research-only signals. These picks target early/pre-breakout setups and do not guarantee growth or profit.'
+  },running:false};
+  return dailyPickCache.data;
+}
+
 app.get('/api/daily-picks',optionalAuth,async(req,res)=>{
   const fresh=dailyPickCache.data&&Date.now()-dailyPickCache.t<5*60*1000;
   if(!fresh){
-    try{
-      // Wait for the first calculation instead of returning a transient 503
-      // while the early/pre-breakout scanner is warming up after a deploy.
-      await computeDailyPicks();
-    }catch{}
+    // Never leave the public endpoint at 503 during a fresh deploy. Publish a
+    // non-gainer fallback immediately, then refresh it with the full
+    // multi-timeframe scanner in the background.
+    seedDailyPickFallback();
+    if(!dailyPickCache.running)computeDailyPicks().catch(()=>{});
   }
   if(!dailyPickCache.data)return res.status(503).json({error:'daily_picks_unavailable'});
   const d=dailyPickCache.data;
