@@ -1,0 +1,16 @@
+name: admin-console-check
+on:
+  push:
+    branches: [admin-console-20260924]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --check server.js
+      - run: node --check payment-wrapper.js
+      - run: node --check bootstrap.js
+      - run: node --check admin-module.js
