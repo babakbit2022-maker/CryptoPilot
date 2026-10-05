@@ -55,14 +55,14 @@ public class MainActivity extends AppCompatActivity {
 
         CookieManager cookies = CookieManager.getInstance();
         cookies.setAcceptCookie(true);
-        cookies.setAcceptThirdPartyCookies(webView, false);
+        cookies.setAcceptThirdPartyCookies(webView, false);\n        cookies.flush();
 
         webView.setOverScrollMode(WebView.OVER_SCROLL_NEVER);
         webView.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 return handleUrl(request.getUrl());
             }
-            @Override public boolean shouldOverrideUrlLoading(WebView view, String url) {
+            @Override public void onPageFinished(WebView view, String url) {\n                super.onPageFinished(view, url);\n                CookieManager.getInstance().flush();\n            }\n            @Override public boolean shouldOverrideUrlLoading(WebView view, String url) {
                 return handleUrl(Uri.parse(url));
             }
         });
