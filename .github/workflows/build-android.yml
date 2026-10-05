@@ -1,6 +1,8 @@
 name: Build CryptoPilot Android APK
 
 on:
+  push:
+    branches: [android-app-crypto19]
   workflow_dispatch:
 
 jobs:
