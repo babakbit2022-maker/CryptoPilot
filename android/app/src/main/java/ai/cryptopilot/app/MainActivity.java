@@ -32,9 +32,13 @@ public class MainActivity extends AppCompatActivity {
         webView.loadUrl(HOME_URL);
 
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
-            @Override public void handleOnBackPressed() {
-                if (webView.canGoBack()) webView.goBack();
-                else finish();
+            @Override
+            public void handleOnBackPressed() {
+                if (webView != null && webView.canGoBack()) {
+                    webView.goBack();
+                } else {
+                    finish();
+                }
             }
         });
     }
@@ -55,22 +59,39 @@ public class MainActivity extends AppCompatActivity {
 
         CookieManager cookies = CookieManager.getInstance();
         cookies.setAcceptCookie(true);
-        cookies.setAcceptThirdPartyCookies(webView, false);\n        cookies.flush();
+        cookies.setAcceptThirdPartyCookies(webView, false);
+        cookies.flush();
 
         webView.setOverScrollMode(WebView.OVER_SCROLL_NEVER);
         webView.setWebViewClient(new WebViewClient() {
-            @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 return handleUrl(request.getUrl());
             }
-            @Override public void onPageFinished(WebView view, String url) {\n                super.onPageFinished(view, url);\n                CookieManager.getInstance().flush();\n            }\n            @Override public boolean shouldOverrideUrlLoading(WebView view, String url) {
+
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, String url) {
                 return handleUrl(Uri.parse(url));
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                CookieManager.getInstance().flush();
             }
         });
 
         webView.setWebChromeClient(new WebChromeClient() {
-            @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
-                if (filePathCallback != null) filePathCallback.onReceiveValue(null);
+            @Override
+            public boolean onShowFileChooser(
+                    WebView view,
+                    ValueCallback<Uri[]> callback,
+                    FileChooserParams params) {
+                if (filePathCallback != null) {
+                    filePathCallback.onReceiveValue(null);
+                }
                 filePathCallback = callback;
+
                 Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
                 intent.addCategory(Intent.CATEGORY_OPENABLE);
                 intent.setType("image/*");
@@ -90,13 +111,17 @@ public class MainActivity extends AppCompatActivity {
         if (SITE_HOST.equals(uri.getHost())) return false;
         try {
             startActivity(new Intent(Intent.ACTION_VIEW, uri));
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            // Ignore external links that have no installed handler.
+        }
         return true;
     }
 
-    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode != FILE_CHOOSER_REQUEST || filePathCallback == null) return;
+
         Uri[] results = null;
         if (resultCode == Activity.RESULT_OK && data != null && data.getData() != null) {
             results = new Uri[]{data.getData()};
@@ -105,12 +130,18 @@ public class MainActivity extends AppCompatActivity {
         filePathCallback = null;
     }
 
-    @Override protected void onDestroy() {
+    @Override
+    protected void onDestroy() {
+        if (filePathCallback != null) {
+            filePathCallback.onReceiveValue(null);
+            filePathCallback = null;
+        }
         if (webView != null) {
             webView.stopLoading();
             webView.setWebChromeClient(null);
             webView.setWebViewClient(null);
             webView.destroy();
+            webView = null;
         }
         super.onDestroy();
     }
